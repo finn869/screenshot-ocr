@@ -1,0 +1,15 @@
+{
+  "name": "screenshot-ocr",
+  "version": "1.0.0",
+  "description": "桌面截图 + OCR 工具（Hackathon MVP）",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^28.0.0"
+  },
+  "keywords": ["electron", "screenshot", "ocr"],
+  "author": "Hackathon Team",
+  "license": "MIT"
+}

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>截图 OCR 工具</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ── 顶部工具栏（所有操作按钮集中在这里）────────────── -->
+    <header id="toolbar">
+
+      <!-- 左：品牌名 -->
+      <div id="brand">
+        <span id="logo">📸</span>
+        <h1>截图 OCR</h1>
+      </div>
+
+      <!-- 中：主要操作按钮组 -->
+      <div id="btn-group">
+        <!-- 截图：最重要，始终可用 -->
+        <button id="btn-capture" class="btn-primary">
+          <span class="btn-icon">⬚</span> 截图
+        </button>
+
+        <div class="divider"></div>
+
+        <!-- 截图后才能用的操作 -->
+        <button id="btn-ocr" class="btn-secondary" disabled>
+          <span class="btn-icon">🔍</span> OCR 识别
+        </button>
+        <button id="btn-copy" class="btn-secondary" disabled>
+          <span class="btn-icon">📋</span> 复制
+        </button>
+        <button id="btn-clear-rect" class="btn-ghost" disabled>
+          <span class="btn-icon">⬜</span> 清除标注
+        </button>
+      </div>
+
+      <!-- 右：状态提示 -->
+      <div id="status-area">
+        <span id="ocr-status"></span>
+      </div>
+
+    </header>
+
+    <!-- ── 主内容区：左（图片）+ 右（OCR 结果）──────────── -->
+    <main id="content">
+
+      <!-- 左侧：截图 canvas -->
+      <section id="image-panel">
+        <div id="canvas-wrap">
+          <div id="empty-state">
+            <div id="empty-icon">⬚</div>
+            <p>点击「截图」开始</p>
+            <small>框选区域后可在图上拖拽画矩形</small>
+          </div>
+          <canvas id="main-canvas"></canvas>
+        </div>
+      </section>
+
+      <!-- 右侧：OCR 文字结果 -->
+      <section id="ocr-panel">
+        <div id="ocr-panel-title">识别结果</div>
+        <div id="ocr-result">
+          <p class="placeholder-text">OCR 结果将显示在这里…</p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="index.js"></script>
+</body>
+</html>

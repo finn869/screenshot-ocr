@@ -312,6 +312,105 @@ button:disabled {
 }
 
 
+/* ── 工具面板 ────────────────────────────────────────────── */
+#tool-palette {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* 分隔竖线 */
+.palette-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+/* 一组按钮的容器 */
+.palette-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* 工具按钮（矩形 / 画笔 / 荧光笔 / 马赛克） */
+.tool-btn {
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border-radius: 5px;
+  font-size: 14px;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tool-btn:hover {
+  background: #1e1e38;
+  color: var(--text);
+}
+
+.tool-btn.active {
+  background: #252548;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* 颜色色块按钮 */
+.color-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  padding: 0;
+  border: 2px solid transparent;
+  flex-shrink: 0;
+}
+
+.color-btn:hover {
+  filter: brightness(1.2);
+  transform: scale(1.15);
+}
+
+.color-btn.active {
+  border-color: #fff;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+/* 笔刷大小按钮 */
+.size-btn {
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.size-btn:hover {
+  background: #1e1e38;
+  color: var(--text);
+}
+
+.size-btn.active {
+  background: #252548;
+  border-color: #555577;
+  color: var(--text);
+}
+
 /* ── 自定义滚动条 ─────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;

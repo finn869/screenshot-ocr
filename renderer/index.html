@@ -58,6 +58,41 @@
 
       <!-- 左侧：截图 canvas -->
       <section id="image-panel">
+
+        <!-- 工具面板：工具选择 + 颜色 + 笔刷大小 -->
+        <div id="tool-palette">
+
+          <!-- 工具按钮 -->
+          <div class="palette-group">
+            <button class="tool-btn active" data-tool="rect"      title="矩形">▭</button>
+            <button class="tool-btn"        data-tool="pen"       title="画笔">✏️</button>
+            <button class="tool-btn"        data-tool="highlight" title="荧光笔">🖊</button>
+            <button class="tool-btn"        data-tool="mosaic"    title="马赛克">⊞</button>
+          </div>
+
+          <div class="palette-sep"></div>
+
+          <!-- 颜色色块 -->
+          <div class="palette-group">
+            <button class="color-btn active" data-color="#ff4757" style="background:#ff4757" title="红"></button>
+            <button class="color-btn"        data-color="#ffa502" style="background:#ffa502" title="橙"></button>
+            <button class="color-btn"        data-color="#ffff00" style="background:#ffff00" title="黄"></button>
+            <button class="color-btn"        data-color="#2ed573" style="background:#2ed573" title="绿"></button>
+            <button class="color-btn"        data-color="#1e90ff" style="background:#1e90ff" title="蓝"></button>
+            <button class="color-btn"        data-color="#ffffff" style="background:#ffffff" title="白"></button>
+          </div>
+
+          <div class="palette-sep"></div>
+
+          <!-- 笔刷大小 -->
+          <div class="palette-group">
+            <button class="size-btn"        data-size="2"  title="细">─</button>
+            <button class="size-btn active" data-size="4"  title="中">━</button>
+            <button class="size-btn"        data-size="8"  title="粗">▬</button>
+          </div>
+
+        </div>
+
         <div id="canvas-wrap">
           <div id="empty-state">
             <div id="empty-icon">⬚</div>

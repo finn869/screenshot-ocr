@@ -18,12 +18,17 @@ const OCR_LANGUAGE = 'chs'; // chs = 简体中文, eng = 英文, auto = 自动
 
 // ─── 全局状态 ──────────────────────────────────────────────────
 const state = {
-  originalImage: null,     // 当前截图的 Image 对象
-  screenshotDataURL: null, // 当前截图的 base64 DataURL（用于 OCR）
-  rects: [],               // 用户在图上画的矩形列表 [{x, y, w, h}]
-  isDrawing: false,        // 是否正在拖拽画矩形
-  drawStart: { x: 0, y: 0 }, // 拖拽起点
-  ocrText: '',             // 上次 OCR 识别的完整文字
+  originalImage: null,        // 当前截图的 Image 对象
+  screenshotDataURL: null,    // 当前截图的 base64 DataURL（用于 OCR）
+  annotations: [],            // 所有已完成标注 [{type, ...}]
+  activeStroke: null,         // 画笔 / 荧光笔绘制中的临时笔画
+  isDrawing: false,
+  drawStart: { x: 0, y: 0 },
+  ocrText: '',
+  // ── 工具状态 ──
+  currentTool: 'rect',        // rect | pen | highlight | mosaic
+  penColor: '#ff4757',        // 当前颜色
+  penSize: 4,                 // 当前笔刷大小
 };
 
 // ─── DOM 引用 ──────────────────────────────────────────────────
@@ -76,9 +81,10 @@ fileInput.addEventListener('change', () => {
 // 「OCR 识别」：调用 OCR API
 btnOcr.addEventListener('click', runOCR);
 
-// 「清除矩形」：清空所有标注框
+// 「清除标注」：清空全部标注
 btnClearRect.addEventListener('click', () => {
-  state.rects = [];
+  state.annotations = [];
+  state.activeStroke = null;
   redrawCanvas();
 });
 
@@ -99,52 +105,79 @@ window.api.onScreenshotResult((dataURL) => {
   loadScreenshot(dataURL);
 });
 
-// ─── Canvas 画矩形（拖拽交互）──────────────────────────────────
+// ─── Canvas 多工具交互 ─────────────────────────────────────────
 
 canvas.addEventListener('mousedown', (e) => {
   if (!state.originalImage) return;
   state.isDrawing = true;
   state.drawStart = getCanvasPos(e);
+
+  // 画笔 / 荧光笔：mousedown 时初始化笔画
+  if (state.currentTool === 'pen' || state.currentTool === 'highlight') {
+    state.activeStroke = {
+      type: state.currentTool,
+      points: [state.drawStart],
+      color: state.penColor,
+      size: state.penSize,
+    };
+  }
 });
 
 canvas.addEventListener('mousemove', (e) => {
   if (!state.isDrawing) return;
-  const cur = getCanvasPos(e);
-  const w = cur.x - state.drawStart.x;
-  const h = cur.y - state.drawStart.y;
+  const pos = getCanvasPos(e);
 
-  // 重绘已有内容，再叠加「预览中的矩形」
-  redrawCanvas();
-  ctx.save();
-  ctx.strokeStyle = '#ff4757';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([5, 4]);
-  ctx.strokeRect(state.drawStart.x, state.drawStart.y, w, h);
-  ctx.restore();
+  if (state.currentTool === 'pen' || state.currentTool === 'highlight') {
+    // 追加点并实时重绘
+    state.activeStroke.points.push(pos);
+    redrawCanvas();
+
+  } else {
+    // 矩形 / 马赛克：重绘 + 虚线预览框
+    const w = pos.x - state.drawStart.x;
+    const h = pos.y - state.drawStart.y;
+    redrawCanvas();
+    ctx.save();
+    ctx.strokeStyle = state.penColor;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 4]);
+    ctx.strokeRect(state.drawStart.x, state.drawStart.y, w, h);
+    ctx.restore();
+  }
 });
 
 canvas.addEventListener('mouseup', (e) => {
   if (!state.isDrawing) return;
   state.isDrawing = false;
+  const pos = getCanvasPos(e);
 
-  const cur = getCanvasPos(e);
-  // 统一为左上角坐标 + 正数宽高（支持反向拖拽）
-  const x = Math.min(state.drawStart.x, cur.x);
-  const y = Math.min(state.drawStart.y, cur.y);
-  const w = Math.abs(cur.x - state.drawStart.x);
-  const h = Math.abs(cur.y - state.drawStart.y);
+  if (state.currentTool === 'pen' || state.currentTool === 'highlight') {
+    // 笔画至少要有 2 个点才保存
+    if (state.activeStroke && state.activeStroke.points.length > 1) {
+      state.annotations.push(state.activeStroke);
+    }
+    state.activeStroke = null;
 
-  // 忽略太小的框
-  if (w > 8 && h > 8) {
-    state.rects.push({ x, y, w, h });
+  } else {
+    // 矩形 / 马赛克：统一为左上角 + 正数宽高
+    const x = Math.min(state.drawStart.x, pos.x);
+    const y = Math.min(state.drawStart.y, pos.y);
+    const w = Math.abs(pos.x - state.drawStart.x);
+    const h = Math.abs(pos.y - state.drawStart.y);
+    if (w > 5 && h > 5) {
+      state.annotations.push({ type: state.currentTool, x, y, w, h, color: state.penColor });
+    }
   }
   redrawCanvas();
 });
 
-// 鼠标离开 canvas 时也要结束绘制
 canvas.addEventListener('mouseleave', () => {
   if (state.isDrawing) {
     state.isDrawing = false;
+    if (state.activeStroke) {
+      if (state.activeStroke.points.length > 1) state.annotations.push(state.activeStroke);
+      state.activeStroke = null;
+    }
     redrawCanvas();
   }
 });
@@ -156,7 +189,8 @@ canvas.addEventListener('mouseleave', () => {
  */
 function loadScreenshot(dataURL) {
   state.screenshotDataURL = dataURL;
-  state.rects = [];
+  state.annotations = [];
+  state.activeStroke = null;
   state.ocrText = '';
 
   const img = new Image();
@@ -191,36 +225,95 @@ function loadScreenshot(dataURL) {
 }
 
 /**
- * 重绘 canvas：先画原图，再叠加所有已保存的矩形
+ * 重绘 canvas：原图 → 依序重播所有标注 → 绘制中的笔画
  */
 function redrawCanvas() {
   if (!state.originalImage) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(state.originalImage, 0, 0, canvas.width, canvas.height);
+  state.annotations.forEach(ann => drawAnnotation(ann));
+  if (state.activeStroke) drawAnnotation(state.activeStroke);
+}
 
-  state.rects.forEach((rect, index) => {
-    // 矩形边框
-    ctx.save();
-    ctx.strokeStyle = '#ff4757';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([]);
-    ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+/**
+ * 绘制单一标注（rect / pen / highlight / mosaic）
+ */
+function drawAnnotation(ann) {
+  ctx.save();
 
-    // 左上角数字标签（背景 + 文字）
-    const labelText = String(index + 1);
-    const labelW = 20;
-    const labelH = 18;
-    const lx = rect.x;
-    const ly = rect.y - labelH;
+  switch (ann.type) {
 
-    ctx.fillStyle = '#ff4757';
-    ctx.fillRect(lx, ly < 0 ? rect.y : ly, labelW, labelH);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 12px monospace';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(labelText, lx + 4, (ly < 0 ? rect.y : ly) + labelH / 2);
-    ctx.restore();
-  });
+    case 'rect':
+      ctx.strokeStyle = ann.color;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+      ctx.strokeRect(ann.x, ann.y, ann.w, ann.h);
+      break;
+
+    case 'pen':
+      if (ann.points.length < 2) break;
+      ctx.strokeStyle = ann.color;
+      ctx.lineWidth = ann.size;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(ann.points[0].x, ann.points[0].y);
+      for (let i = 1; i < ann.points.length; i++) ctx.lineTo(ann.points[i].x, ann.points[i].y);
+      ctx.stroke();
+      break;
+
+    case 'highlight':
+      if (ann.points.length < 2) break;
+      ctx.globalAlpha = 0.38;         // 半透明
+      ctx.strokeStyle = ann.color;
+      ctx.lineWidth = ann.size * 4;   // 荧光笔比画笔宽
+      ctx.lineCap = 'square';
+      ctx.lineJoin = 'round';
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(ann.points[0].x, ann.points[0].y);
+      for (let i = 1; i < ann.points.length; i++) ctx.lineTo(ann.points[i].x, ann.points[i].y);
+      ctx.stroke();
+      break;
+
+    case 'mosaic':
+      drawMosaic(ann.x, ann.y, ann.w, ann.h);
+      break;
+  }
+
+  ctx.restore();
+}
+
+/**
+ * 马赛克：把选区切成 blockSize×blockSize 小格，每格填平均色
+ * 从 originalImage 取色，确保叠加多个标注时不会互相影响
+ */
+function drawMosaic(x, y, w, h) {
+  const blockSize = 10;
+
+  // 离屏 canvas 取原图像素
+  const tmp = document.createElement('canvas');
+  tmp.width = canvas.width;
+  tmp.height = canvas.height;
+  const tmpCtx = tmp.getContext('2d');
+  tmpCtx.drawImage(state.originalImage, 0, 0, canvas.width, canvas.height);
+
+  for (let bx = x; bx < x + w; bx += blockSize) {
+    for (let by = y; by < y + h; by += blockSize) {
+      const bw = Math.min(blockSize, x + w - bx);
+      const bh = Math.min(blockSize, y + h - by);
+      if (bw <= 0 || bh <= 0) continue;
+
+      const data = tmpCtx.getImageData(bx, by, bw, bh).data;
+      let r = 0, g = 0, b = 0, count = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        r += data[i]; g += data[i + 1]; b += data[i + 2]; count++;
+      }
+      ctx.fillStyle = `rgb(${Math.round(r/count)},${Math.round(g/count)},${Math.round(b/count)})`;
+      ctx.fillRect(bx, by, bw, bh);
+    }
+  }
 }
 
 /**
@@ -332,6 +425,37 @@ function setStatus(msg) {
     }, 6000);
   }
 }
+
+// ─── 工具面板交互 ──────────────────────────────────────────────
+
+// 工具按钮：点击切换 currentTool，更新 active 样式
+document.querySelectorAll('.tool-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.currentTool = btn.dataset.tool;
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    // 更新 canvas 光标
+    canvas.style.cursor = (state.currentTool === 'mosaic') ? 'cell' : 'crosshair';
+  });
+});
+
+// 颜色色块：点击切换 penColor，更新 active 样式
+document.querySelectorAll('.color-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.penColor = btn.dataset.color;
+    document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// 大小按钮：点击切换 penSize，更新 active 样式
+document.querySelectorAll('.size-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.penSize = Number(btn.dataset.size);
+    document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
 
 /**
  * HTML 特殊字符转义（防 XSS）

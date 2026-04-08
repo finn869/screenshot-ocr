@@ -13,7 +13,7 @@
 // 免费 key「helloworld」每天限 25,000 次，适合 Demo
 // 建议去 https://ocr.space/ocrapi 申请私人免费 key（更稳定）
 const OCR_API_KEY = 'K88825221888957';
-const OCR_API_URL = 'https://api.ocr.space/parse/base64';
+const OCR_API_URL = 'https://api.ocr.space/parse/image';
 const OCR_LANGUAGE = 'chs'; // chs = 简体中文, eng = 英文, auto = 自动
 
 // ─── 全局状态 ──────────────────────────────────────────────────
@@ -31,6 +31,8 @@ const canvas      = document.getElementById('main-canvas');
 const ctx         = canvas.getContext('2d');
 const emptyState  = document.getElementById('empty-state');
 const btnCapture  = document.getElementById('btn-capture');
+const btnOpenFile = document.getElementById('btn-open-file');
+const fileInput   = document.getElementById('file-input');
 const btnOcr      = document.getElementById('btn-ocr');
 const btnClearRect= document.getElementById('btn-clear-rect');
 const btnCopy     = document.getElementById('btn-copy');
@@ -42,6 +44,33 @@ const ocrStatus   = document.getElementById('ocr-status');
 // 「截取屏幕」：通知主进程开始截图流程
 btnCapture.addEventListener('click', () => {
   window.api.startCapture();
+});
+
+// 「开启图片」：触发隐藏的 file input
+btnOpenFile.addEventListener('click', () => {
+  fileInput.click();
+});
+
+// 用户选好档案后：用 FileReader 读成 base64，直接复用 loadScreenshot()
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  // 只接受图片
+  if (!file.type.startsWith('image/')) {
+    setStatus('⚠️ 请选择图片档案（PNG / JPG / GIF …）');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    loadScreenshot(e.target.result); // DataURL，和截图结果格式完全一样
+    setStatus(`📂 已开启：${file.name}`);
+  };
+  reader.readAsDataURL(file); // 读成 base64 DataURL
+
+  // 清空 input，允许重复选同一个档案
+  fileInput.value = '';
 });
 
 // 「OCR 识别」：调用 OCR API

@@ -1,10 +1,9 @@
 /**
  * main.js — Electron 主进程
  *
- * 职责：
- *  1. 创建主窗口（renderer/index.html）
- *  2. 处理截图流程：隐藏主窗口 → 截全屏 → 弹出 overlay → 接收裁剪坐标 → 回传给渲染层
- *  3. 通过 ipcMain 与渲染层通信
+ * 新增：
+ *  - globalShortcut 快捷键（预设 F1，可从渲染层修改）
+ *  - 多显示器支持：截取所有屏幕并合成，overlay 跨屏覆盖
  */
 
 const {
@@ -13,12 +12,17 @@ const {
   ipcMain,
   desktopCapturer,
   screen,
+  globalShortcut,
 } = require('electron');
 const path = require('path');
 
-// ─── 全局窗口引用 ──────────────────────────────────────────────
-let mainWindow = null;    // 主窗口
-let captureWindow = null; // 截图选区 overlay 窗口
+// ─── 全局变量 ──────────────────────────────────────────────────
+let mainWindow     = null;
+let captureWindows = [];   // 每个显示器各一个 overlay 窗口
+let currentShortcut = 'F1';
+
+// 防止 capture-done / capture-cancel 被多个 overlay 重复触发
+let isCapturing = false;
 
 // ─── 创建主窗口 ────────────────────────────────────────────────
 function createMainWindow() {
@@ -31,131 +35,199 @@ function createMainWindow() {
     title: '截图 OCR 工具',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,   // 安全隔离：渲染层无法直接用 Node API
-      nodeIntegration: false,   // 禁止渲染层直接 require()
-      webSecurity: false,       // 允许渲染层 fetch 跨域（OCR API）
-                                // ⚠️ 生产环境应改为 true 并配置 CSP
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: false,   // 允许跨域 fetch（OCR API）
     },
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-
-  // 开发调试时取消注释
   // mainWindow.webContents.openDevTools();
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+  mainWindow.on('closed', () => { mainWindow = null; });
 }
 
 // ─── App 生命周期 ──────────────────────────────────────────────
-app.whenReady().then(createMainWindow);
+app.whenReady().then(() => {
+  createMainWindow();
+  registerShortcut(currentShortcut);  // 启动时注册快捷键
+});
 
 app.on('window-all-closed', () => {
-  // macOS 惯例：关闭所有窗口时不退出 app
   if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('activate', () => {
-  // macOS：点击 Dock 图标时重新创建窗口
   if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
 });
 
-// ─── IPC: 开始截图流程 ─────────────────────────────────────────
-//
-// 流程：
-//   渲染层点"截图" → invoke('start-capture')
-//   → 隐藏主窗口
-//   → desktopCapturer 截全屏
-//   → 打开全屏 overlay 窗口
-//   → 把全屏图传给 overlay
-//
-ipcMain.handle('start-capture', async () => {
-  // 1. 先隐藏主窗口（避免截到自己）
+// 退出前取消注册，避免系统级别的快捷键残留
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+});
+
+// ─── 快捷键注册 ────────────────────────────────────────────────
+/**
+ * 注册全局截图快捷键
+ * @param {string} key  Electron accelerator 格式，如 'F1'、'Ctrl+Shift+X'
+ * @returns {boolean}   是否注册成功
+ */
+function registerShortcut(key) {
+  globalShortcut.unregisterAll();
+  try {
+    const ok = globalShortcut.register(key, () => triggerCapture());
+    if (!ok) console.warn('[Shortcut] 注册失败（可能被其他程序占用）:', key);
+    return ok;
+  } catch (e) {
+    console.error('[Shortcut] 无效的快捷键格式:', key, e.message);
+    return false;
+  }
+}
+
+// ─── 截图主流程 ────────────────────────────────────────────────
+/**
+ * 触发截图（快捷键 或 按钮）
+ *
+ * 多显示器策略：
+ *   macOS 不允许单个窗口横跨多个独立 Space/Display，
+ *   因此为「每个显示器各建立一个独立 overlay 窗口」。
+ *   用户在哪个屏幕拖拽选区，那个窗口就负责截图；
+ *   确认后关闭所有 overlay 窗口并回传裁剪图。
+ */
+async function triggerCapture() {
+  if (captureWindows.length > 0) return;  // 已在截图中，忽略重复触发
+  if (!mainWindow) return;
+
+  isCapturing = true;
   mainWindow.hide();
-  await sleep(250); // 等窗口动画完成
+  await sleep(250);   // 等待主窗口隐藏动画
 
-  // 2. 获取主屏幕逻辑尺寸
-  const display = screen.getPrimaryDisplay();
-  const { width, height } = display.size;
+  // ── 1. 获取所有显示器 ────────────────────────────────────────
+  const allDisplays = screen.getAllDisplays();
 
-  // 3. 截取全屏（thumbnailSize 指定输出分辨率）
+  // ── 2. 截取所有屏幕（每个 source 对应一个显示器）────────────
+  // thumbnailSize 设为足够大，确保 Retina 屏幕也能全分辨率截取
+  const maxPxW = Math.max(...allDisplays.map(d => Math.round(d.bounds.width  * d.scaleFactor)));
+  const maxPxH = Math.max(...allDisplays.map(d => Math.round(d.bounds.height * d.scaleFactor)));
+
   let sources;
   try {
     sources = await desktopCapturer.getSources({
       types: ['screen'],
-      thumbnailSize: { width, height },
+      thumbnailSize: { width: maxPxW, height: maxPxH },
     });
   } catch (err) {
-    console.error('desktopCapturer 失败:', err);
-    mainWindow.show();
+    console.error('[Capture] desktopCapturer 失败:', err);
+    restoreMainWindow();
     return;
   }
 
   if (!sources || sources.length === 0) {
-    console.error('找不到屏幕源');
-    mainWindow.show();
+    console.error('[Capture] 找不到任何屏幕源');
+    restoreMainWindow();
     return;
   }
 
-  // 取第一个屏幕（主屏）转为 base64
-  const fullScreenDataURL = sources[0].thumbnail.toDataURL();
+  // ── 3. 为每个显示器建立独立 overlay 窗口 ─────────────────────
+  for (let i = 0; i < allDisplays.length; i++) {
+    const display = allDisplays[i];
 
-  // 4. 创建全屏 overlay 窗口
-  captureWindow = new BrowserWindow({
-    x: 0,
-    y: 0,
-    width,
-    height,
-    frame: false,          // 无边框
-    alwaysOnTop: true,     // 始终在最前
-    skipTaskbar: true,     // 不在任务栏显示
-    resizable: false,
-    movable: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
+    // 匹配该显示器对应的截图 source
+    // display_id 是最可靠的匹配方式（Electron 13+ 支持）
+    const source = sources.find(s => s.display_id === String(display.id))
+                || sources[i]      // fallback：按顺序对应
+                || sources[0];     // 最后兜底
 
-  captureWindow.loadFile(path.join(__dirname, 'capture', 'overlay.html'));
-
-  // 5. 页面加载完成后，把全屏截图发给 overlay
-  captureWindow.webContents.once('did-finish-load', () => {
-    captureWindow.webContents.send('init-overlay', {
-      imageData: fullScreenDataURL,
-      width,
-      height,
+    const win = new BrowserWindow({
+      x:      display.bounds.x,
+      y:      display.bounds.y,
+      width:  display.bounds.width,
+      height: display.bounds.height,
+      frame:       false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable:   false,
+      movable:     false,
+      // macOS：让窗口出现在全部 Desktop（不受 Space 限制）
+      ...(process.platform === 'darwin' ? { visibleOnAllWorkspaces: true, fullscreenable: false } : {}),
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
     });
-  });
-});
 
-// ─── IPC: overlay 完成选区，传来裁剪后的图 ─────────────────────
-//
-// overlay.js 在 mouseup 时裁剪好图片，通过此 channel 回传给主进程
-// 主进程再把截图转发给主窗口渲染层
-//
+    win.loadFile(path.join(__dirname, 'capture', 'overlay.html'));
+
+    // 每个 overlay 只接收自己这块屏幕的截图（坐标从 0,0 开始）
+    win.webContents.once('did-finish-load', () => {
+      win.webContents.send('init-overlay', {
+        screensData: [{
+          imageData: source.thumbnail.toDataURL(),
+          x:      0,
+          y:      0,
+          width:  display.bounds.width,
+          height: display.bounds.height,
+        }],
+        totalWidth:  display.bounds.width,
+        totalHeight: display.bounds.height,
+      });
+    });
+
+    captureWindows.push(win);
+  }
+}
+
+// ─── IPC 处理器 ────────────────────────────────────────────────
+
+// 渲染层截图按钮
+ipcMain.handle('start-capture', () => triggerCapture());
+
+// 任一 overlay 截图完成 → 关闭所有 overlay，回传截图给主窗口
 ipcMain.handle('capture-done', (event, croppedDataURL) => {
-  closeCaptureWindow();
-  mainWindow.show();
-  mainWindow.focus();
-  // 把裁剪好的截图发给主窗口
+  if (!isCapturing) return;        // 防止重复触发
+  isCapturing = false;
+  closeAllCaptureWindows();
   mainWindow.webContents.send('screenshot-result', croppedDataURL);
+  restoreMainWindow();
 });
 
-// ─── IPC: 取消截图（按 ESC 或选区太小）────────────────────────
+// 任一 overlay 取消截图 → 关闭所有 overlay
 ipcMain.handle('capture-cancel', () => {
-  closeCaptureWindow();
-  mainWindow.show();
-  mainWindow.focus();
+  if (!isCapturing) return;
+  isCapturing = false;
+  closeAllCaptureWindows();
+  restoreMainWindow();
 });
+
+// 渲染层请求修改快捷键
+ipcMain.handle('change-shortcut', (event, newKey) => {
+  const ok = registerShortcut(newKey);
+  if (ok) {
+    currentShortcut = newKey;
+    if (mainWindow) mainWindow.webContents.send('shortcut-changed', newKey);
+  }
+  return { ok, current: currentShortcut };
+});
+
+// 渲染层查询当前快捷键
+ipcMain.handle('get-shortcut', () => currentShortcut);
 
 // ─── 工具函数 ──────────────────────────────────────────────────
-function closeCaptureWindow() {
-  if (captureWindow && !captureWindow.isDestroyed()) {
-    captureWindow.close();
-    captureWindow = null;
+
+// 关闭所有 overlay 窗口
+function closeAllCaptureWindows() {
+  captureWindows.forEach(win => {
+    if (!win.isDestroyed()) win.close();
+  });
+  captureWindows = [];
+}
+
+// 显示并聚焦主窗口
+function restoreMainWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
   }
 }
 

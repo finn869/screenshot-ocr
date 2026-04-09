@@ -17,19 +17,29 @@ contextBridge.exposeInMainWorld('api', {
 
   // ── 主窗口用 ─────────────────────────────────────────────────
 
-  /**
-   * 通知主进程开始截图流程
-   * 主窗口点击「截图」按钮时调用
-   */
+  /** 触发截图流程 */
   startCapture: () => ipcRenderer.invoke('start-capture'),
 
-  /**
-   * 监听截图完成事件
-   * 主进程把裁剪好的图发过来时触发
-   * @param {(dataURL: string) => void} callback
-   */
+  /** 监听截图完成 */
   onScreenshotResult: (callback) => {
     ipcRenderer.on('screenshot-result', (event, dataURL) => callback(dataURL));
+  },
+
+  // ── 快捷键设置 ───────────────────────────────────────────────
+
+  /** 查询当前快捷键 */
+  getShortcut: () => ipcRenderer.invoke('get-shortcut'),
+
+  /**
+   * 修改快捷键
+   * @param {string} key  Electron accelerator 格式：'F2'、'Ctrl+Shift+S' 等
+   * @returns {{ ok: boolean, current: string }}
+   */
+  changeShortcut: (key) => ipcRenderer.invoke('change-shortcut', key),
+
+  /** 监听快捷键被修改（主进程同步给渲染层） */
+  onShortcutChanged: (callback) => {
+    ipcRenderer.on('shortcut-changed', (event, key) => callback(key));
   },
 
   // ── Overlay 窗口用 ────────────────────────────────────────────

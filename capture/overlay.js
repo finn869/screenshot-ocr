@@ -36,17 +36,38 @@ let dragType   = null;  // 'move' | handle名称
 let dragOrigin = null;  // 鼠标按下时的坐标
 let selSnapshot = null; // 鼠标按下时的选区快照
 
-// ─── 初始化 ───────────────────────────────────────────────────
-window.api.onInitOverlay(({ imageData, width, height }) => {
-  canvas.width  = width;
-  canvas.height = height;
+// ─── 初始化（支持多显示器）────────────────────────────────────
+//
+// main.js 传来的 payload：
+//   { screensData: [{imageData, x, y, width, height}, ...], totalWidth, totalHeight }
+//
+// 流程：把每块屏幕图像按其位置画到一张离屏 canvas 上，合成完整画面
+//
+window.api.onInitOverlay(({ screensData, totalWidth, totalHeight }) => {
+  canvas.width  = totalWidth;
+  canvas.height = totalHeight;
 
-  const img = new Image();
-  img.onload = () => {
-    bgImage = img;
-    render();
-  };
-  img.src = imageData;
+  // 离屏合成 canvas
+  const composed    = document.createElement('canvas');
+  composed.width    = totalWidth;
+  composed.height   = totalHeight;
+  const composedCtx = composed.getContext('2d');
+
+  let pending = screensData.length;
+
+  screensData.forEach(scrn => {
+    const img = new Image();
+    img.onload = () => {
+      // 把这块屏幕的截图画到对应位置（坐标已由 main.js 转换为相对偏移）
+      composedCtx.drawImage(img, scrn.x, scrn.y, scrn.width, scrn.height);
+      pending--;
+      if (pending === 0) {
+        bgImage = composed;   // 合成完毕，用作背景
+        render();
+      }
+    };
+    img.src = scrn.imageData;
+  });
 });
 
 // ─── 键盘 ─────────────────────────────────────────────────────

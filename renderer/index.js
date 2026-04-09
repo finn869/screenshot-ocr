@@ -44,6 +44,92 @@ const btnCopy     = document.getElementById('btn-copy');
 const ocrResult   = document.getElementById('ocr-result');
 const ocrStatus   = document.getElementById('ocr-status');
 
+// ─── 快捷键设置 UI ─────────────────────────────────────────────
+const shortcutWrap = document.getElementById('shortcut-wrap');
+const shortcutKey  = document.getElementById('shortcut-key');
+let isRecordingShortcut = false;
+
+// 页面加载时从主进程读取当前快捷键
+window.api.getShortcut().then(key => { shortcutKey.textContent = key; });
+
+// 主进程通知快捷键已变更（多窗口同步）
+window.api.onShortcutChanged(key => { shortcutKey.textContent = key; });
+
+// 点击快捷键区域 → 进入录制模式
+shortcutWrap.addEventListener('click', () => {
+  if (isRecordingShortcut) return;
+  isRecordingShortcut = true;
+  shortcutWrap.classList.add('recording');
+  shortcutKey.textContent = '…';
+  setStatus('⌨️ 请按下新的快捷键组合（ESC 取消）');
+});
+
+// 录制模式下监听按键
+document.addEventListener('keydown', async (e) => {
+  if (!isRecordingShortcut) return;
+  e.preventDefault();
+
+  // ESC 取消录制
+  if (e.key === 'Escape') {
+    cancelRecording();
+    return;
+  }
+
+  // 把浏览器 KeyboardEvent 转成 Electron accelerator 格式
+  const accelerator = buildAccelerator(e);
+  if (!accelerator) return;   // 单独按修饰键时忽略，等组合键
+
+  isRecordingShortcut = false;
+  shortcutWrap.classList.remove('recording');
+
+  const result = await window.api.changeShortcut(accelerator);
+  if (result.ok) {
+    shortcutKey.textContent = result.current;
+    setStatus(`✅ 快捷键已设为 ${result.current}`);
+  } else {
+    shortcutKey.textContent = result.current;  // 显示旧值
+    setStatus(`⚠️ 快捷键「${accelerator}」注册失败（可能被占用），维持原设定`);
+  }
+});
+
+function cancelRecording() {
+  isRecordingShortcut = false;
+  shortcutWrap.classList.remove('recording');
+  window.api.getShortcut().then(key => { shortcutKey.textContent = key; });
+  setStatus('');
+}
+
+/**
+ * 把 KeyboardEvent 转成 Electron accelerator 字串
+ * 例：Ctrl+Shift+S、F2、Alt+X
+ */
+function buildAccelerator(e) {
+  const parts = [];
+  if (e.ctrlKey  || e.metaKey) parts.push('CommandOrControl');
+  if (e.altKey)   parts.push('Alt');
+  if (e.shiftKey) parts.push('Shift');
+
+  const key = e.key;
+  // 忽略纯修饰键
+  if (['Control','Meta','Alt','Shift'].includes(key)) return null;
+
+  // 功能键
+  if (key.startsWith('F') && !isNaN(key.slice(1))) {
+    parts.push(key);          // F1–F12
+  } else if (key.length === 1) {
+    parts.push(key.toUpperCase());
+  } else {
+    // 特殊键映射
+    const map = { ' ':'Space', ArrowUp:'Up', ArrowDown:'Down',
+                  ArrowLeft:'Left', ArrowRight:'Right',
+                  Enter:'Return', Backspace:'Backspace', Delete:'Delete' };
+    if (!map[key]) return null;
+    parts.push(map[key]);
+  }
+
+  return parts.join('+');
+}
+
 // ─── 按钮事件 ──────────────────────────────────────────────────
 
 // 「截取屏幕」：通知主进程开始截图流程

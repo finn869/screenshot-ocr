@@ -72,6 +72,60 @@ body {
   white-space: nowrap;
 }
 
+/* 快捷键显示区域 */
+#shortcut-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+#shortcut-wrap:hover {
+  background: #1e1e38;
+  border-color: #3a3a60;
+}
+
+#shortcut-label {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+#shortcut-key {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: monospace;
+  color: var(--accent);
+  min-width: 24px;
+  text-align: center;
+}
+
+#shortcut-edit-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* 录制中状态 */
+#shortcut-wrap.recording {
+  border-color: var(--accent);
+  background: #0d2a35;
+  animation: pulse-border 1s ease-in-out infinite;
+}
+
+#shortcut-wrap.recording #shortcut-key {
+  color: #fff;
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: var(--accent); }
+  50%       { border-color: transparent; }
+}
+
 /* 按钮组（中） */
 #btn-group {
   display: flex;

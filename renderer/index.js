@@ -64,6 +64,37 @@ shortcutWrap.addEventListener('click', () => {
   setStatus('⌨️ 请按下新的快捷键组合（ESC 取消）');
 });
 
+// ─── 全局键盘快捷键（标注操作）────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  // 快捷键录制模式时，所有按键都交给录制逻辑处理，不走这里
+  if (isRecordingShortcut) return;
+
+  const isMeta = e.metaKey || e.ctrlKey;  // macOS 用 Cmd，Windows/Linux 用 Ctrl
+
+  // Cmd+Z / Ctrl+Z：撤销上一步标注
+  if (isMeta && e.key === 'z') {
+    e.preventDefault();
+    if (state.annotations.length > 0) {
+      state.annotations.pop();        // 移除最后一个标注
+      redrawCanvas();
+      setStatus(`↩ 已撤销（剩余 ${state.annotations.length} 个标注）`);
+    }
+    return;
+  }
+
+  // Cmd+D / Ctrl+D：清除所有标注
+  if (isMeta && e.key === 'd') {
+    e.preventDefault();
+    if (state.annotations.length > 0) {
+      state.annotations = [];
+      state.activeStroke = null;
+      redrawCanvas();
+      setStatus('🗑️ 已清除所有标注');
+    }
+    return;
+  }
+});
+
 // 录制模式下监听按键
 document.addEventListener('keydown', async (e) => {
   if (!isRecordingShortcut) return;

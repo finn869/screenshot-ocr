@@ -38,6 +38,15 @@ body {
   user-select: none; /* 默认不可选，OCR 结果行会单独开启 */
 }
 
+/* #app 必须撑满 body，高度链才能传递到 #ocr-panel 的 grid */
+#app {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* ── 顶部工具栏 ───────────────────────────────────────────── */
 #toolbar {
   display: flex;
@@ -300,33 +309,48 @@ button:disabled {
 
 /* ── 右侧：OCR + 翻译面板 ────────────────────────────────────── */
 #ocr-panel {
+  /* 宽度三重锁定，任何情况下都不增不减 */
   width: 320px;
+  min-width: 320px;
+  max-width: 320px;
   flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
+  flex-grow: 0;
+
+  /* 高度：明确撑满 #content（flex 行容器的交叉轴） */
+  align-self: stretch;
+  height: 100%;           /* grid fr 计算需要显式 height */
+
+  /* Grid 把面板切成精确等高两行，与内容完全无关 */
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  grid-template-columns: 100%;
+
   border-left: 1px solid var(--border);
+  overflow: hidden;
 }
 
-/* 上下两个面板区（各占 50%）*/
+/* 上下两个面板区（高度由 Grid 分配，此处只管内部排列）*/
 .panel-section {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
+  overflow: hidden;          /* 严禁内容撑出分配的格子 */
   border-bottom: 1px solid var(--border);
+  min-height: 0;             /* grid 子元素同样需要 */
 }
 
 .panel-section:last-child {
   border-bottom: none;
 }
 
-/* 面板区标题栏 */
+/* 面板区标题栏（三重锁定高度，不参与内容撑高）*/
 .panel-section-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 14px;
   height: 36px;
+  min-height: 36px;
+  max-height: 36px;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-faint);
@@ -335,20 +359,25 @@ button:disabled {
   background: var(--bg-header);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
-/* OCR 文字列表（可滚动）*/
+/* OCR 文字列表（高度 = 格子高 - 36px 标题，内容超出时出现 scrollbar）*/
 #ocr-result {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px 14px;
   background: var(--bg-deep);
 }
 
-/* 翻译结果区（可滚动）*/
+/* 翻译结果区（同上，宽高永远与 OCR 区一致）*/
 #translation-result {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px 14px;
   background: var(--bg-deep);
 }

@@ -123,9 +123,9 @@ function onMouseMove(e) {
   const pos = { x: e.clientX, y: e.clientY };
 
   if (phase === 'drawing') {
-    // 实时更新选区大小
-    sel = normalizeRect(drawStart.x, drawStart.y,
-                        pos.x - drawStart.x, pos.y - drawStart.y);
+    // 实时更新选区大小，并贴齐屏幕边缘
+    sel = clampToScreen(normalizeRect(drawStart.x, drawStart.y,
+                        pos.x - drawStart.x, pos.y - drawStart.y));
     updateSizeLabel(pos.x, pos.y, sel.w, sel.h);
     render();
     return;
@@ -165,8 +165,8 @@ function onMouseMove(e) {
 function onMouseUp(e) {
   if (phase === 'drawing') {
     const pos = { x: e.clientX, y: e.clientY };
-    sel = normalizeRect(drawStart.x, drawStart.y,
-                        pos.x - drawStart.x, pos.y - drawStart.y);
+    sel = clampToScreen(normalizeRect(drawStart.x, drawStart.y,
+                        pos.x - drawStart.x, pos.y - drawStart.y));
 
     if (sel.w < 5 || sel.h < 5) {
       // 选区太小，重置
@@ -332,8 +332,8 @@ function applyHandleDrag(pos) {
   if (dragType.includes('w')) { x = s.x + dx; w = s.w - dx; }
   if (dragType.includes('e')) { w = s.w + dx; }
 
-  // 防止宽高变成负数（翻转时重新正规化）
-  sel = normalizeRect(x, y, w, h);
+  // 防止宽高变成负数（翻转时重新正规化），并贴齐屏幕边缘
+  sel = clampToScreen(normalizeRect(x, y, w, h));
 }
 
 // ─── 工具函数 ─────────────────────────────────────────────────
@@ -356,16 +356,48 @@ function clamp(val, min, max) {
   return Math.min(Math.max(val, min), max);
 }
 
-// 更新「确认截图」按钮位置（跟着选区右下角）
-function updateConfirmBtnPos() {
-  const btnW = 110, btnH = 34, margin = 8;
-  let left = sel.x + sel.w + margin;
-  let top  = sel.y + sel.h + margin;
+// 将选区夹进屏幕边界（触边时自动吸附）
+function clampToScreen(rect) {
+  let { x, y, w, h } = rect;
+  // 左 / 上越界：把起始坐标贴到边界，同步缩短宽高
+  if (x < 0) { w += x; x = 0; }
+  if (y < 0) { h += y; y = 0; }
+  // 右 / 下越界：截断到屏幕边缘（吸附效果）
+  if (x + w > canvas.width)  w = canvas.width  - x;
+  if (y + h > canvas.height) h = canvas.height - y;
+  // 宽高最小为 0
+  w = Math.max(0, w);
+  h = Math.max(0, h);
+  return { x, y, w, h };
+}
 
-  // 超出右边界
-  if (left + btnW > canvas.width)  left = sel.x + sel.w - btnW;
-  // 超出下边界
-  if (top  + btnH > canvas.height) top  = sel.y - btnH - margin;
+// 更新「确认截图」按钮位置
+// 优先级：选区右下外侧 → 选区右上外侧 → 选区内部右下角
+function updateConfirmBtnPos() {
+  const btnW = 116, btnH = 34, margin = 8;
+
+  // ── 水平位置：右对齐到选区右边，不足则靠左，始终不超出屏幕 ──
+  let left = sel.x + sel.w - btnW;
+  left = clamp(left, margin, canvas.width - btnW - margin);
+
+  // ── 垂直位置：三档降级 ────────────────────────────────────────
+  // 档 1：选区正下方（最常见）
+  let top = sel.y + sel.h + margin;
+
+  if (top + btnH > canvas.height - margin) {
+    // 档 2：选区正上方（选区靠近底部时）
+    top = sel.y - btnH - margin;
+  }
+
+  if (top < margin) {
+    // 档 3：选区内部靠右下角（选区本身也很靠顶，上下都没空间）
+    top = sel.y + sel.h - btnH - margin;
+    // 若选区高度比按钮还小，就叠在选区上缘
+    if (top < sel.y) top = sel.y + margin;
+  }
+
+  // 最终保证不超出屏幕上下
+  top = clamp(top, margin, canvas.height - btnH - margin);
 
   confirmBtn.style.left    = left + 'px';
   confirmBtn.style.top     = top  + 'px';

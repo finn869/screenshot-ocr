@@ -42,12 +42,6 @@
         <div class="divider"></div>
 
         <!-- 截图后才能用的操作 -->
-        <button id="btn-ocr" class="btn-secondary" disabled>
-          <span class="btn-icon">🔍</span> OCR 识别
-        </button>
-        <button id="btn-copy" class="btn-secondary" disabled>
-          <span class="btn-icon">📋</span> 复制
-        </button>
         <button id="btn-clear-rect" class="btn-ghost" disabled>
           <span class="btn-icon">⬜</span> 清除标注
         </button>
@@ -110,12 +104,41 @@
         </div>
       </section>
 
-      <!-- 右侧：OCR 文字结果 -->
+      <!-- 右侧：OCR + 翻译面板 -->
       <section id="ocr-panel">
-        <div id="ocr-panel-title">识别结果</div>
-        <div id="ocr-result">
-          <p class="placeholder-text">OCR 结果将显示在这里…</p>
+
+        <!-- OCR 结果区 -->
+        <div class="panel-section" id="ocr-section">
+          <div class="panel-section-title">
+            <button id="btn-ocr" class="btn-panel-translate" disabled title="点击执行 OCR 识别">🔍 OCR 识别</button>
+            <button id="btn-copy" class="btn-panel-action" disabled title="复制识别文字">📋 复制</button>
+          </div>
+          <div id="ocr-result">
+            <p class="placeholder-text">OCR 结果将显示在这里…</p>
+          </div>
         </div>
+
+        <!-- 翻译结果区 -->
+        <div class="panel-section" id="translate-section">
+          <div class="panel-section-title">
+            <button id="btn-translate" class="btn-panel-translate" disabled title="点击执行翻译">🌐 翻译</button>
+            <div class="panel-title-actions">
+              <select id="lang-select" title="选择目标语言">
+                <option value="zh|en">中文 → 英文</option>
+                <option value="en|zh">英文 → 中文</option>
+                <option value="zh|ja">中文 → 日文</option>
+                <option value="ja|zh">日文 → 中文</option>
+                <option value="ko|zh">韩文 → 中文</option>
+                <option value="zh|fr">中文 → 法文</option>
+              </select>
+              <button id="btn-copy-translation" class="btn-panel-action" disabled title="复制翻译文字">📋 复制</button>
+            </div>
+          </div>
+          <div id="translation-result">
+            <p class="placeholder-text">翻译结果将显示在这里…</p>
+          </div>
+        </div>
+
       </section>
 
     </main>

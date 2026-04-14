@@ -16,6 +16,11 @@ const OCR_API_KEY = 'REMOVED';
 const OCR_API_URL = 'https://api.ocr.space/parse/image';
 const OCR_LANGUAGE = 'chs'; // chs = 简体中文, eng = 英文, auto = 自动
 
+// ─── 翻译 API 配置 ─────────────────────────────────────────────
+// 使用 MyMemory 免费翻译 API（无需 API Key，每天 5000 字符）
+// 文档：https://mymemory.translated.net/doc/spec.php
+const TRANSLATE_API_URL = 'https://api.mymemory.translated.net/get';
+
 // ─── 全局状态 ──────────────────────────────────────────────────
 const state = {
   originalImage: null,        // 当前截图的 Image 对象
@@ -25,6 +30,7 @@ const state = {
   isDrawing: false,
   drawStart: { x: 0, y: 0 },
   ocrText: '',
+  translationText: '',        // 当前翻译结果
   // ── 工具状态 ──
   currentTool: 'rect',        // rect | pen | highlight | mosaic
   penColor: '#ff4757',        // 当前颜色
@@ -38,11 +44,15 @@ const emptyState  = document.getElementById('empty-state');
 const btnCapture  = document.getElementById('btn-capture');
 const btnOpenFile = document.getElementById('btn-open-file');
 const fileInput   = document.getElementById('file-input');
-const btnOcr      = document.getElementById('btn-ocr');
-const btnClearRect= document.getElementById('btn-clear-rect');
-const btnCopy     = document.getElementById('btn-copy');
-const ocrResult   = document.getElementById('ocr-result');
-const ocrStatus   = document.getElementById('ocr-status');
+const btnOcr           = document.getElementById('btn-ocr');
+const btnClearRect     = document.getElementById('btn-clear-rect');
+const btnCopy          = document.getElementById('btn-copy');
+const btnTranslate        = document.getElementById('btn-translate');
+const btnCopyTranslation  = document.getElementById('btn-copy-translation');
+const langSelect          = document.getElementById('lang-select');
+const ocrResult           = document.getElementById('ocr-result');
+const translationResult   = document.getElementById('translation-result');
+const ocrStatus           = document.getElementById('ocr-status');
 
 // ─── 快捷键设置 UI ─────────────────────────────────────────────
 const shortcutWrap = document.getElementById('shortcut-wrap');
@@ -205,16 +215,26 @@ btnClearRect.addEventListener('click', () => {
   redrawCanvas();
 });
 
-// 「复制全部」：把 OCR 文字写入剪贴板
+// 「复制」（识别结果区）：仅复制 OCR 文字
 btnCopy.addEventListener('click', () => {
   if (!state.ocrText) return;
   navigator.clipboard.writeText(state.ocrText).then(() => {
-    btnCopy.textContent = '✅ 已复制！';
-    setTimeout(() => { btnCopy.textContent = '📋 复制全部'; }, 2000);
-  }).catch(err => {
-    console.error('复制失败:', err);
-  });
+    btnCopy.textContent = '✅ 已复制';
+    setTimeout(() => { btnCopy.textContent = '📋 复制'; }, 2000);
+  }).catch(err => console.error('复制失败:', err));
 });
+
+// 「复制」（翻译结果区）：仅复制翻译文字
+btnCopyTranslation.addEventListener('click', () => {
+  if (!state.translationText) return;
+  navigator.clipboard.writeText(state.translationText).then(() => {
+    btnCopyTranslation.textContent = '✅ 已复制';
+    setTimeout(() => { btnCopyTranslation.textContent = '📋 复制'; }, 2000);
+  }).catch(err => console.error('复制翻译失败:', err));
+});
+
+// 「翻译」：调用翻译 API（仅通过按钮触发，不随语言切换自动执行）
+btnTranslate.addEventListener('click', runTranslation);
 
 // ─── 接收截图结果 ──────────────────────────────────────────────
 // 主进程把裁剪好的图片 DataURL 发过来
@@ -309,6 +329,7 @@ function loadScreenshot(dataURL) {
   state.annotations = [];
   state.activeStroke = null;
   state.ocrText = '';
+  state.translationText = '';
 
   const img = new Image();
   img.onload = () => {
@@ -333,9 +354,12 @@ function loadScreenshot(dataURL) {
     btnOcr.disabled = false;
     btnClearRect.disabled = false;
 
-    // 清空上次 OCR 结果
+    // 清空上次 OCR / 翻译结果
     ocrResult.innerHTML = '<p class="placeholder-text">截图完成，点击「OCR 识别」开始识别…</p>';
+    translationResult.innerHTML = '<p class="placeholder-text">翻译结果将显示在这里…</p>';
     btnCopy.disabled = true;
+    btnTranslate.disabled = true;
+    btnCopyTranslation.disabled = true;
     setStatus('');
   };
   img.src = dataURL;
@@ -454,7 +478,8 @@ async function runOCR() {
   if (!state.screenshotDataURL) return;
 
   btnOcr.disabled = true;
-  btnOcr.textContent = '识别中…';
+  btnOcr.classList.add('translating');
+  btnOcr.textContent = '🔍 识别中…';
   setStatus('🔄 正在调用 OCR API，请稍候…');
   ocrResult.innerHTML = '<p class="placeholder-text">识别中，请稍候…</p>';
 
@@ -503,6 +528,7 @@ async function runOCR() {
       renderOCRResult(parsedText);
       setStatus(`✅ 识别完成，共 ${parsedText.replace(/\s/g, '').length} 个字符`);
       btnCopy.disabled = false;
+      btnTranslate.disabled = false;
     }
 
   } catch (err) {
@@ -511,6 +537,7 @@ async function runOCR() {
     setStatus('❌ 识别失败');
   } finally {
     btnOcr.disabled = false;
+    btnOcr.classList.remove('translating');
     btnOcr.textContent = '🔍 OCR 识别';
   }
 }
@@ -583,4 +610,125 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// ─── 翻译 ──────────────────────────────────────────────────────
+
+/**
+ * 调用 MyMemory 翻译 API
+ * 文档：https://mymemory.translated.net/doc/spec.php
+ * 免费额度：5000 字符 / 天（无需 API Key）
+ */
+async function runTranslation() {
+  const text = state.ocrText.trim();
+  if (!text) return;
+
+  const langPair = langSelect.value;          // 例：zh|en
+  const [srcLang, tgtLang] = langPair.split('|');
+
+  btnTranslate.disabled = true;
+  btnTranslate.classList.add('translating');
+  btnTranslate.textContent = '🌐 翻译中…';
+  setStatus('🔄 正在翻译，请稍候…');
+  translationResult.innerHTML = '<p class="placeholder-text">翻译中，请稍候…</p>';
+
+  try {
+    // MyMemory 每次最多 500 字符，超长时分段翻译
+    const chunks = splitText(text, 450);
+    const translated = [];
+
+    for (const chunk of chunks) {
+      const url = `${TRANSLATE_API_URL}?q=${encodeURIComponent(chunk)}&langpair=${srcLang}|${tgtLang}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`HTTP 错误 ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // responseStatus 200 或 "200" 均为成功
+      if (String(data.responseStatus) !== '200') {
+        const errMsg = data.responseDetails || '翻译服务返回错误';
+        throw new Error(errMsg);
+      }
+
+      const result = data.responseData?.translatedText;
+      if (!result) throw new Error('翻译结果为空');
+
+      // MyMemory 有时会在结果里附上 "MYMEMORY WARNING" 提示，移除掉
+      translated.push(result.replace(/MYMEMORY WARNING:.*$/i, '').trim());
+    }
+
+    const fullTranslation = translated.join('\n');
+    state.translationText = fullTranslation;
+    renderTranslationResult(fullTranslation, langPair);
+
+    const charCount = fullTranslation.replace(/\s/g, '').length;
+    setStatus(`✅ 翻译完成（${charCount} 字符）`);
+    btnCopyTranslation.disabled = false;
+
+  } catch (err) {
+    console.error('翻译失败:', err);
+    translationResult.innerHTML =
+      `<p class="error-text">❌ 翻译失败：${escapeHtml(err.message)}<br>
+       <small>请检查网络连接，或稍后重试（免费 API 每天限 5000 字符）</small></p>`;
+    setStatus('❌ 翻译失败');
+  } finally {
+    btnTranslate.disabled = false;
+    btnTranslate.classList.remove('translating');
+    btnTranslate.textContent = '🌐 翻译';
+  }
+}
+
+/**
+ * 把翻译结果按行渲染到翻译面板
+ */
+function renderTranslationResult(text, langPair) {
+  const [src, tgt] = langPair.split('|');
+  const langLabel = {
+    'zh': '中文', 'en': '英文', 'ja': '日文', 'ko': '韩文', 'fr': '法文',
+  };
+  const label = `${langLabel[src] || src} → ${langLabel[tgt] || tgt}`;
+
+  const lines = text.split('\n');
+  const linesHtml = lines
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .map(line => `<div class="translate-line">${escapeHtml(line)}</div>`)
+    .join('');
+
+  translationResult.innerHTML =
+    `<div class="translate-meta">${escapeHtml(label)}</div>` +
+    (linesHtml || '<p class="placeholder-text">无内容</p>');
+}
+
+/**
+ * 将长文本按指定字符数分割成数组
+ * 尽量在换行符处分割，保持语义完整
+ */
+function splitText(text, maxLen) {
+  if (text.length <= maxLen) return [text];
+
+  const chunks = [];
+  const lines = text.split('\n');
+  let current = '';
+
+  for (const line of lines) {
+    if ((current + '\n' + line).length > maxLen) {
+      if (current) chunks.push(current.trim());
+      // 单行超长时强制截断
+      let remaining = line;
+      while (remaining.length > maxLen) {
+        chunks.push(remaining.slice(0, maxLen));
+        remaining = remaining.slice(maxLen);
+      }
+      current = remaining;
+    } else {
+      current = current ? current + '\n' + line : line;
+    }
+  }
+
+  if (current.trim()) chunks.push(current.trim());
+  return chunks;
 }

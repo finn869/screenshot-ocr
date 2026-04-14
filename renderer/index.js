@@ -31,6 +31,7 @@ const state = {
   drawStart: { x: 0, y: 0 },
   ocrText: '',
   translationText: '',        // 当前翻译结果
+  redoStack: [],              // 撤销后可重做的标注队列
   // ── 工具状态 ──
   currentTool: 'rect',        // rect | pen | highlight | mosaic
   penColor: '#ff4757',        // 当前颜色
@@ -46,6 +47,8 @@ const btnOpenFile = document.getElementById('btn-open-file');
 const fileInput   = document.getElementById('file-input');
 const btnOcr           = document.getElementById('btn-ocr');
 const btnClearRect     = document.getElementById('btn-clear-rect');
+const btnUndo          = document.getElementById('btn-undo');
+const btnRedo          = document.getElementById('btn-redo');
 const btnCopy          = document.getElementById('btn-copy');
 const btnTranslate        = document.getElementById('btn-translate');
 const btnCopyTranslation  = document.getElementById('btn-copy-translation');
@@ -82,13 +85,16 @@ document.addEventListener('keydown', (e) => {
   const isMeta = e.metaKey || e.ctrlKey;  // macOS 用 Cmd，Windows/Linux 用 Ctrl
 
   // Cmd+Z / Ctrl+Z：撤销上一步标注
-  if (isMeta && e.key === 'z') {
+  if (isMeta && e.key === 'z' && !e.shiftKey) {
     e.preventDefault();
-    if (state.annotations.length > 0) {
-      state.annotations.pop();        // 移除最后一个标注
-      redrawCanvas();
-      setStatus(`↩ 已撤销（剩余 ${state.annotations.length} 个标注）`);
-    }
+    doUndo();
+    return;
+  }
+
+  // Cmd+Shift+Z / Ctrl+Shift+Z：取消撤销（重做）
+  if (isMeta && e.key === 'z' && e.shiftKey) {
+    e.preventDefault();
+    doRedo();
     return;
   }
 
@@ -97,8 +103,10 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (state.annotations.length > 0) {
       state.annotations = [];
+      state.redoStack = [];
       state.activeStroke = null;
       redrawCanvas();
+      updateHistoryBtns();
       setStatus('🗑️ 已清除所有标注');
     }
     return;
@@ -208,12 +216,20 @@ fileInput.addEventListener('change', () => {
 // 「OCR 识别」：调用 OCR API
 btnOcr.addEventListener('click', runOCR);
 
-// 「清除标注」：清空全部标注
+// 「清除标注」：清空全部标注与历史
 btnClearRect.addEventListener('click', () => {
   state.annotations = [];
+  state.redoStack = [];
   state.activeStroke = null;
   redrawCanvas();
+  updateHistoryBtns();
 });
+
+// 「撤销」按钮
+btnUndo.addEventListener('click', doUndo);
+
+// 「重做」按钮
+btnRedo.addEventListener('click', doRedo);
 
 // 「复制」（识别结果区）：仅复制 OCR 文字
 btnCopy.addEventListener('click', () => {
@@ -292,6 +308,7 @@ canvas.addEventListener('mouseup', (e) => {
     // 笔画至少要有 2 个点才保存
     if (state.activeStroke && state.activeStroke.points.length > 1) {
       state.annotations.push(state.activeStroke);
+      state.redoStack = [];   // 新标注后清空重做队列
     }
     state.activeStroke = null;
 
@@ -303,19 +320,25 @@ canvas.addEventListener('mouseup', (e) => {
     const h = Math.abs(pos.y - state.drawStart.y);
     if (w > 5 && h > 5) {
       state.annotations.push({ type: state.currentTool, x, y, w, h, color: state.penColor });
+      state.redoStack = [];   // 新标注后清空重做队列
     }
   }
   redrawCanvas();
+  updateHistoryBtns();
 });
 
 canvas.addEventListener('mouseleave', () => {
   if (state.isDrawing) {
     state.isDrawing = false;
     if (state.activeStroke) {
-      if (state.activeStroke.points.length > 1) state.annotations.push(state.activeStroke);
+      if (state.activeStroke.points.length > 1) {
+        state.annotations.push(state.activeStroke);
+        state.redoStack = []; // 新标注后清空重做队列
+      }
       state.activeStroke = null;
     }
     redrawCanvas();
+    updateHistoryBtns();
   }
 });
 
@@ -327,6 +350,7 @@ canvas.addEventListener('mouseleave', () => {
 function loadScreenshot(dataURL) {
   state.screenshotDataURL = dataURL;
   state.annotations = [];
+  state.redoStack = [];
   state.activeStroke = null;
   state.ocrText = '';
   state.translationText = '';
@@ -701,6 +725,34 @@ function renderTranslationResult(text, langPair) {
   translationResult.innerHTML =
     `<div class="translate-meta">${escapeHtml(label)}</div>` +
     (linesHtml || '<p class="placeholder-text">无内容</p>');
+}
+
+// ─── 撤销 / 重做 ───────────────────────────────────────────────
+
+/** 撤销最后一步标注 */
+function doUndo() {
+  if (state.annotations.length === 0) return;
+  const last = state.annotations.pop();
+  state.redoStack.push(last);
+  redrawCanvas();
+  updateHistoryBtns();
+  setStatus(`↩ 已撤销（剩余 ${state.annotations.length} 个标注）`);
+}
+
+/** 重做上一次撤销的标注 */
+function doRedo() {
+  if (state.redoStack.length === 0) return;
+  const ann = state.redoStack.pop();
+  state.annotations.push(ann);
+  redrawCanvas();
+  updateHistoryBtns();
+  setStatus(`↪ 已重做（共 ${state.annotations.length} 个标注）`);
+}
+
+/** 同步撤销 / 重做按钮的可用状态 */
+function updateHistoryBtns() {
+  btnUndo.disabled = state.annotations.length === 0;
+  btnRedo.disabled = state.redoStack.length === 0;
 }
 
 /**

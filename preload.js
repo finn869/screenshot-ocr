@@ -17,8 +17,11 @@ contextBridge.exposeInMainWorld('api', {
 
   // ── 主窗口用 ─────────────────────────────────────────────────
 
-  /** 触发截图流程 */
+  /** 触发区域截图流程（overlay 拖拽选区） */
   startCapture: () => ipcRenderer.invoke('start-capture'),
+
+  /** 全屏截图（主显示器） */
+  captureFullscreen: () => ipcRenderer.invoke('capture-fullscreen'),
 
   /** 监听截图完成 */
   onScreenshotResult: (callback) => {
@@ -47,7 +50,7 @@ contextBridge.exposeInMainWorld('api', {
   /**
    * 监听初始化数据（全屏截图 + 尺寸）
    * overlay 加载完成后主进程会发这条消息
-   * @param {(payload: { imageData: string, width: number, height: number }) => void} callback
+   * @param {(payload: { screensData, totalWidth, totalHeight }) => void} callback
    */
   onInitOverlay: (callback) => {
     ipcRenderer.on('init-overlay', (event, payload) => callback(payload));

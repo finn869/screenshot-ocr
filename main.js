@@ -1,9 +1,9 @@
 /**
  * main.js — Electron 主进程
  *
- * 新增：
+ * 功能：
  *  - globalShortcut 快捷键（预设 F1，可从渲染层修改）
- *  - 多显示器支持：截取所有屏幕并合成，overlay 跨屏覆盖
+ *  - 多显示器支持：截取所有屏幕，overlay 各屏独立覆盖
  */
 
 const {
@@ -50,7 +50,7 @@ function createMainWindow() {
 // ─── App 生命周期 ──────────────────────────────────────────────
 app.whenReady().then(() => {
   createMainWindow();
-  registerShortcut(currentShortcut);  // 启动时注册快捷键
+  registerShortcut(currentShortcut);     // 启动时注册快捷键
 });
 
 app.on('window-all-closed', () => {
@@ -212,6 +212,30 @@ ipcMain.handle('change-shortcut', (event, newKey) => {
 
 // 渲染层查询当前快捷键
 ipcMain.handle('get-shortcut', () => currentShortcut);
+
+// ─── 全屏截图（主显示器）──────────────────────────────────────
+ipcMain.handle('capture-fullscreen', async () => {
+  const primary = screen.getPrimaryDisplay();
+  const pixelW  = Math.round(primary.bounds.width  * primary.scaleFactor);
+  const pixelH  = Math.round(primary.bounds.height * primary.scaleFactor);
+
+  let sources;
+  try {
+    sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: pixelW, height: pixelH },
+    });
+  } catch (err) {
+    console.error('[Fullscreen] getSources 失败:', err);
+    return null;
+  }
+
+  // 优先匹配 display_id，否则取第一个
+  const source = sources.find(s => s.display_id === String(primary.id)) || sources[0];
+  if (!source) return null;
+
+  return source.thumbnail.toDataURL();
+});
 
 // ─── 工具函数 ──────────────────────────────────────────────────
 

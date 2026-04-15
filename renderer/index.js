@@ -42,8 +42,10 @@ const state = {
 const canvas      = document.getElementById('main-canvas');
 const ctx         = canvas.getContext('2d');
 const emptyState  = document.getElementById('empty-state');
-const btnCapture  = document.getElementById('btn-capture');
-const btnOpenFile = document.getElementById('btn-open-file');
+const btnCapture    = document.getElementById('btn-capture');
+const btnFullscreen = document.getElementById('btn-fullscreen');
+const btnOpenFile   = document.getElementById('btn-open-file');
+
 const fileInput   = document.getElementById('file-input');
 const btnOcr           = document.getElementById('btn-ocr');
 const btnClearRect     = document.getElementById('btn-clear-rect');
@@ -184,6 +186,26 @@ function buildAccelerator(e) {
 // 「截取屏幕」：通知主进程开始截图流程
 btnCapture.addEventListener('click', () => {
   window.api.startCapture();
+});
+
+// 「全屏截图」：截取主显示器全屏
+btnFullscreen.addEventListener('click', async () => {
+  btnFullscreen.disabled = true;
+  setStatus('🖥️ 正在截取全屏…');
+  try {
+    const dataURL = await window.api.captureFullscreen();
+    if (dataURL) {
+      loadScreenshot(dataURL);
+      setStatus('✅ 全屏截图完成');
+    } else {
+      setStatus('⚠️ 全屏截图失败，请重试');
+    }
+  } catch (err) {
+    console.error('全屏截图失败:', err);
+    setStatus('❌ 全屏截图失败');
+  } finally {
+    btnFullscreen.disabled = false;
+  }
 });
 
 // 「开启图片」：触发隐藏的 file input

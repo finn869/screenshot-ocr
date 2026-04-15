@@ -43,7 +43,9 @@ let selSnapshot = null; // 鼠标按下时的选区快照
 //
 // 流程：把每块屏幕图像按其位置画到一张离屏 canvas 上，合成完整画面
 //
-window.api.onInitOverlay(({ screensData, totalWidth, totalHeight }) => {
+window.api.onInitOverlay((payload) => {
+  const { screensData, totalWidth, totalHeight } = payload;
+
   canvas.width  = totalWidth;
   canvas.height = totalHeight;
 
@@ -58,11 +60,10 @@ window.api.onInitOverlay(({ screensData, totalWidth, totalHeight }) => {
   screensData.forEach(scrn => {
     const img = new Image();
     img.onload = () => {
-      // 把这块屏幕的截图画到对应位置（坐标已由 main.js 转换为相对偏移）
       composedCtx.drawImage(img, scrn.x, scrn.y, scrn.width, scrn.height);
       pending--;
       if (pending === 0) {
-        bgImage = composed;   // 合成完毕，用作背景
+        bgImage = composed;
         render();
       }
     };
@@ -408,7 +409,7 @@ function hideConfirmBtn() {
   confirmBtn.style.display = 'none';
 }
 
-// 更新跟随鼠标的尺寸标签
+// ─── 更新跟随鼠标的尺寸标签
 function updateSizeLabel(mx, my, w, h) {
   sizeLabel.style.display = 'block';
   sizeLabel.textContent   = `${Math.round(w)} × ${Math.round(h)}`;

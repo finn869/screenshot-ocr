@@ -8,13 +8,22 @@
  *  4. 显示识别结果，支持复制
  */
 
-// ─── OCR API 配置 ──────────────────────────────────────────────
-// 使用 OCR.space 免费 API
-// 免费 key「helloworld」每天限 25,000 次，适合 Demo
-// 建议去 https://ocr.space/ocrapi 申请私人免费 key（更稳定）
-const OCR_API_KEY = 'K88825221888957';
-const OCR_API_URL = 'https://api.ocr.space/parse/image';
-const OCR_LANGUAGE = 'chs'; // chs = 简体中文, eng = 英文, auto = 自动
+// ─── OCR API 配置（EasyOCR 本地服务）──────────────────────────
+// 调用本地 Python EasyOCR 服务，完全离线、无限次数
+// 服务由 main.js 在 Electron 启动时自动开启（ocr_server.py）
+let OCR_SERVER_URL = 'http://127.0.0.1:7788';
+let ocrServerReady = false;
+
+// 查询主进程确认实际端口，并监听就绪通知
+window.api.getOcrServerUrl().then(url => { OCR_SERVER_URL = url; });
+window.api.onOcrServerReady((ready) => {
+  ocrServerReady = ready;
+  if (ready) {
+    setStatus('✅ EasyOCR 引擎已就绪');
+  } else {
+    setStatus('⚠️ OCR 引擎启动超时，请检查 Python 环境');
+  }
+});
 
 // ─── 翻译 API 配置 ─────────────────────────────────────────────
 // 使用 MyMemory 免费翻译 API（无需 API Key，每天 5000 字符）
@@ -549,8 +558,8 @@ function getCanvasPos(e) {
 // ─── OCR 识别 ──────────────────────────────────────────────────
 
 /**
- * 调用 OCR.space API 识别文字
- * 使用 fetch（renderer 层直接调用，需要 webSecurity: false）
+ * 调用本地 EasyOCR 服务识别文字
+ * 请求本机 Python Flask 服务（ocr_server.py），完全离线无限次
  */
 async function runOCR() {
   if (!state.screenshotDataURL) return;
@@ -558,45 +567,27 @@ async function runOCR() {
   btnOcr.disabled = true;
   btnOcr.classList.add('translating');
   btnOcr.textContent = '🔍 识别中…';
-  setStatus('🔄 正在调用 OCR API，请稍候…');
+  setStatus('🔄 正在本地 EasyOCR 识别，请稍候…');
   ocrResult.innerHTML = '<p class="placeholder-text">识别中，请稍候…</p>';
 
   try {
-    // OCR.space 接受完整的 data URL（包含前缀）
-    const base64WithPrefix = state.screenshotDataURL;
-
-    // 用 URLSearchParams 构建表单请求体
-    const body = new URLSearchParams();
-    body.append('base64Image', base64WithPrefix);
-    body.append('language', OCR_LANGUAGE);
-    body.append('apikey', OCR_API_KEY);
-    body.append('isOverlayRequired', 'false');
-    body.append('detectOrientation', 'true');
-    body.append('scale', 'true');        // 提高小图识别精度
-    body.append('isTable', 'false');
-
-    const response = await fetch(OCR_API_URL, {
+    const response = await fetch(`${OCR_SERVER_URL}/ocr`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base64Image: state.screenshotDataURL }),
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP 错误 ${response.status}`);
+      throw new Error(`本地服务返回 HTTP ${response.status}，请确认 ocr_server.py 正在运行`);
     }
 
     const data = await response.json();
 
-    // OCR.space 的错误字段
-    if (data.IsErroredOnProcessing) {
-      const errMsg = Array.isArray(data.ErrorMessage)
-        ? data.ErrorMessage.join('; ')
-        : (data.ErrorMessage || 'OCR 处理失败');
-      throw new Error(errMsg);
+    if (!data.success) {
+      throw new Error(data.error || 'EasyOCR 处理失败');
     }
 
-    // 提取识别文字
-    const parsedText = data.ParsedResults?.[0]?.ParsedText || '';
+    const parsedText = data.text || '';
 
     if (!parsedText.trim()) {
       ocrResult.innerHTML = '<p class="placeholder-text">⚠️ 未识别到文字（图片可能太模糊或无文字）</p>';
@@ -612,7 +603,7 @@ async function runOCR() {
       btnPrivacyMask.textContent = '🛡️ 隱私遮蔽';
       privacySummary.style.display = 'none';
       renderOCRResult(state.ocrText, false);
-      setStatus(`✅ 識別完成，共 ${parsedText.replace(/\s/g, '').length} 個字元`);
+      setStatus(`✅ 識別完成，共 ${parsedText.replace(/\s/g, '').length} 個字元（EasyOCR）`);
       btnCopy.disabled = false;
       btnTranslate.disabled = false;
       btnPrivacyMask.disabled = false;
@@ -620,7 +611,11 @@ async function runOCR() {
 
   } catch (err) {
     console.error('OCR 识别失败:', err);
-    ocrResult.innerHTML = `<p class="error-text">❌ 识别失败：${escapeHtml(err.message)}<br><small>请检查网络连接或 API Key 是否有效</small></p>`;
+    const hint = err.message.includes('fetch') || err.message.includes('Failed')
+      ? '请确认已启动 ocr_server.py，或等待 EasyOCR 引擎初始化完成'
+      : '请检查 Python 环境与依赖';
+    ocrResult.innerHTML =
+      `<p class="error-text">❌ 识别失败：${escapeHtml(err.message)}<br><small>${hint}</small></p>`;
     setStatus('❌ 识别失败');
   } finally {
     btnOcr.disabled = false;

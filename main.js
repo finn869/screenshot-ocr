@@ -15,6 +15,87 @@ const {
   globalShortcut,
 } = require('electron');
 const path = require('path');
+const { spawn } = require('child_process');
+
+// ─── EasyOCR Python 服务 ────────────────────────────────────────
+const OCR_SERVER_PORT = 7788;
+let ocrServerProcess = null;
+
+/**
+ * 启动本地 EasyOCR Python 服务
+ * 会自动寻找 python3 / python，并等待服务就绪（最多 60 秒）
+ */
+function startOcrServer() {
+  const serverScript = path.join(__dirname, 'ocr_server.py');
+
+  // 优先使用 python3，fallback 到 python
+  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+
+  console.log('[OCR] 正在启动 EasyOCR 服务…');
+
+  ocrServerProcess = spawn(pythonCmd, [serverScript], {
+    env: { ...process.env, OCR_PORT: String(OCR_SERVER_PORT) },
+    // detached: false 确保主进程退出时子进程也被终止
+  });
+
+  ocrServerProcess.stdout.on('data', (data) => {
+    console.log('[OCR-Server]', data.toString().trim());
+  });
+
+  ocrServerProcess.stderr.on('data', (data) => {
+    // EasyOCR 会把模型加载进度打到 stderr，正常现象
+    console.log('[OCR-Server]', data.toString().trim());
+  });
+
+  ocrServerProcess.on('exit', (code) => {
+    console.log(`[OCR] 服务已退出，代码: ${code}`);
+    ocrServerProcess = null;
+  });
+
+  ocrServerProcess.on('error', (err) => {
+    console.error('[OCR] 无法启动 Python 进程:', err.message);
+    console.error('[OCR] 请确认已执行：pip install -r requirements.txt');
+  });
+}
+
+/**
+ * 终止 OCR 服务进程
+ */
+function stopOcrServer() {
+  if (ocrServerProcess) {
+    console.log('[OCR] 正在关闭 EasyOCR 服务…');
+    ocrServerProcess.kill();
+    ocrServerProcess = null;
+  }
+}
+
+/**
+ * 检查 OCR 服务是否就绪（轮询 /health，最多等 60 秒）
+ * @returns {Promise<boolean>}
+ */
+async function waitForOcrServer(maxWaitMs = 60000, intervalMs = 1000) {
+  const url = `http://127.0.0.1:${OCR_SERVER_PORT}/health`;
+  const start = Date.now();
+
+  while (Date.now() - start < maxWaitMs) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(800) });
+      if (res.ok) {
+        console.log('[OCR] 服务已就绪 ✓');
+        return true;
+      }
+    } catch (_) {
+      // 服务尚未启动，继续等待
+    }
+    await sleep(intervalMs);
+  }
+
+  console.warn('[OCR] 等待超时，服务可能尚未就绪');
+  return false;
+}
+
+// 渲染层查询 OCR 服务地址（供 renderer 层使用）
+ipcMain.handle('get-ocr-server-url', () => `http://127.0.0.1:${OCR_SERVER_PORT}`);
 
 // ─── 全局变量 ──────────────────────────────────────────────────
 let mainWindow     = null;
@@ -48,9 +129,19 @@ function createMainWindow() {
 }
 
 // ─── App 生命周期 ──────────────────────────────────────────────
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // 先启动 OCR 服务（后台非阻塞），再建立窗口
+  startOcrServer();
+
   createMainWindow();
   registerShortcut(currentShortcut);     // 启动时注册快捷键
+
+  // 后台等待服务就绪，就绪后通知渲染层
+  waitForOcrServer().then(ready => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('ocr-server-ready', ready);
+    }
+  });
 });
 
 app.on('window-all-closed', () => {
@@ -61,9 +152,10 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
 });
 
-// 退出前取消注册，避免系统级别的快捷键残留
+// 退出前取消注册，避免系统级别的快捷键残留；同时关闭 OCR 服务
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  stopOcrServer();
 });
 
 // ─── 快捷键注册 ────────────────────────────────────────────────

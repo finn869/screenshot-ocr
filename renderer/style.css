@@ -643,6 +643,76 @@ button:disabled {
   color: var(--text);
 }
 
+/* ── 隱私遮蔽 ─────────────────────────────────────────────── */
+
+/* 🛡️ 按鈕啟用中狀態（shield on） */
+.btn-privacy.active {
+  color: #34d399;             /* 綠色表示「遮蔽中」 */
+  border-color: #34d399;
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.btn-privacy:hover:not(:disabled) {
+  color: #6ee7b7;
+  border-color: #6ee7b7;
+  background: rgba(52, 211, 153, 0.08);
+}
+
+/* 遮蔽摘要列：顯示偵測到哪些類型及數量 */
+#privacy-summary {
+  padding: 5px 14px 4px;
+  background: rgba(52, 211, 153, 0.06);
+  border-bottom: 1px solid rgba(52, 211, 153, 0.15);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.privacy-summary-label {
+  color: #6ee7b7;
+  font-weight: 600;
+  margin-right: 2px;
+}
+
+.privacy-summary-none {
+  color: #6ee7b7;
+  font-weight: 500;
+}
+
+/* 各類型小標籤（chip） */
+.privacy-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(52, 211, 153, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  color: #a7f3d0;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: monospace;
+  letter-spacing: 0.3px;
+}
+
+/* 遮蔽佔位符高亮 */
+.masked-token {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: monospace;
+  cursor: help;
+  user-select: text;
+  letter-spacing: 0.3px;
+  vertical-align: baseline;
+}
+
 /* ── 自定义滚动条 ─────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;

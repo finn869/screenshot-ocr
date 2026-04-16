@@ -30,7 +30,9 @@ const state = {
   isDrawing: false,
   drawStart: { x: 0, y: 0 },
   ocrText: '',
+  maskedText: '',             // 遮蔽後的文字（mask ON 時由 renderOCRResult 寫入）
   translationText: '',        // 当前翻译结果
+  privacyMaskOn: false,       // 隱私遮蔽是否啟用
   redoStack: [],              // 撤销后可重做的标注队列
   // ── 工具状态 ──
   currentTool: 'rect',        // rect | pen | highlight | mosaic
@@ -52,6 +54,8 @@ const btnClearRect     = document.getElementById('btn-clear-rect');
 const btnUndo          = document.getElementById('btn-undo');
 const btnRedo          = document.getElementById('btn-redo');
 const btnCopy          = document.getElementById('btn-copy');
+const btnPrivacyMask      = document.getElementById('btn-privacy-mask');
+const privacySummary      = document.getElementById('privacy-summary');
 const btnTranslate        = document.getElementById('btn-translate');
 const btnCopyTranslation  = document.getElementById('btn-copy-translation');
 const langSelect          = document.getElementById('lang-select');
@@ -253,13 +257,35 @@ btnUndo.addEventListener('click', doUndo);
 // 「重做」按钮
 btnRedo.addEventListener('click', doRedo);
 
-// 「复制」（识别结果区）：仅复制 OCR 文字
+// 「复制」（识别结果区）：mask ON 時複製遮蔽文字，OFF 時複製正規化原文
 btnCopy.addEventListener('click', () => {
   if (!state.ocrText) return;
-  navigator.clipboard.writeText(state.ocrText).then(() => {
-    btnCopy.textContent = '✅ 已复制';
-    setTimeout(() => { btnCopy.textContent = '📋 复制'; }, 2000);
+  // 遮蔽模式：複製含 [佔位符] 的遮蔽純文字；一般模式：複製正規化後的原始文字
+  const textToCopy = (state.privacyMaskOn && state.maskedText)
+    ? state.maskedText
+    : state.ocrText;
+  navigator.clipboard.writeText(textToCopy).then(() => {
+    btnCopy.textContent = '✅ 已複製';
+    setTimeout(() => { btnCopy.textContent = '📋 複製'; }, 2000);
   }).catch(err => console.error('复制失败:', err));
+});
+
+// 「🛡️ 隱私遮蔽」：切換遮蔽 / 原文顯示
+btnPrivacyMask.addEventListener('click', () => {
+  if (!state.ocrText) return;
+  state.privacyMaskOn = !state.privacyMaskOn;
+
+  if (state.privacyMaskOn) {
+    btnPrivacyMask.classList.add('active');
+    btnPrivacyMask.textContent = '🛡️ 顯示原文';
+    renderOCRResult(state.ocrText, true);
+    setStatus('🛡️ 隱私遮蔽已啟用');
+  } else {
+    btnPrivacyMask.classList.remove('active');
+    btnPrivacyMask.textContent = '🛡️ 隱私遮蔽';
+    renderOCRResult(state.ocrText, false);
+    setStatus('🔓 已還原原始文字');
+  }
 });
 
 // 「复制」（翻译结果区）：仅复制翻译文字
@@ -375,6 +401,7 @@ function loadScreenshot(dataURL) {
   state.redoStack = [];
   state.activeStroke = null;
   state.ocrText = '';
+  state.maskedText = '';
   state.translationText = '';
 
   const img = new Image();
@@ -406,6 +433,11 @@ function loadScreenshot(dataURL) {
     btnCopy.disabled = true;
     btnTranslate.disabled = true;
     btnCopyTranslation.disabled = true;
+    // 重置隱私遮蔽
+    state.privacyMaskOn = false;
+    btnPrivacyMask.disabled = true;
+    btnPrivacyMask.classList.remove('active');
+    privacySummary.style.display = 'none';
     setStatus('');
   };
   img.src = dataURL;
@@ -570,11 +602,20 @@ async function runOCR() {
       ocrResult.innerHTML = '<p class="placeholder-text">⚠️ 未识别到文字（图片可能太模糊或无文字）</p>';
       setStatus('⚠️ 未识别到文字');
     } else {
-      state.ocrText = parsedText;
-      renderOCRResult(parsedText);
-      setStatus(`✅ 识别完成，共 ${parsedText.replace(/\s/g, '').length} 个字符`);
+      // 正規化 OCR 雜訊（間隔號→句點、全形字元→半形 等），確保複製與遮蔽都拿到乾淨文字
+      state.ocrText = window.privacyMask
+        ? window.privacyMask.normalizeOcrArtifacts(parsedText)
+        : parsedText;
+      state.maskedText = '';
+      state.privacyMaskOn = false;
+      btnPrivacyMask.classList.remove('active');
+      btnPrivacyMask.textContent = '🛡️ 隱私遮蔽';
+      privacySummary.style.display = 'none';
+      renderOCRResult(state.ocrText, false);
+      setStatus(`✅ 識別完成，共 ${parsedText.replace(/\s/g, '').length} 個字元`);
       btnCopy.disabled = false;
       btnTranslate.disabled = false;
+      btnPrivacyMask.disabled = false;
     }
 
   } catch (err) {
@@ -591,16 +632,56 @@ async function runOCR() {
 /**
  * 把 OCR 结果按行渲染到右侧面板
  * 每行都是可选中文字，方便用户自行复制局部内容
+ * @param {string} text - 原始文字
+ * @param {boolean} [masked=false] - 是否顯示隱私遮蔽版本
  */
-function renderOCRResult(text) {
-  const lines = text.split('\n');
+function renderOCRResult(text, masked = false) {
+  let displayText = text;
+
+  if (masked && window.privacyMask) {
+    const { maskedText, findings } = window.privacyMask.maskText(text);
+    displayText = maskedText;
+    state.maskedText = maskedText;   // 供複製按鈕使用
+    renderPrivacySummary(findings);
+  } else {
+    state.maskedText = '';
+    privacySummary.style.display = 'none';
+  }
+
+  const lines = displayText.split('\n');
   const html = lines
     .map(line => line.trim())
     .filter(line => line.length > 0)
-    .map(line => `<div class="ocr-line">${escapeHtml(line)}</div>`)
+    .map(line => {
+      const lineHtml = masked && window.privacyMask
+        ? window.privacyMask.toHighlightedHtml(line)
+        : escapeHtml(line);
+      return `<div class="ocr-line">${lineHtml}</div>`;
+    })
     .join('');
 
   ocrResult.innerHTML = html || '<p class="placeholder-text">无内容</p>';
+}
+
+/**
+ * 顯示隱私遮蔽摘要（偵測到多少種、多少筆敏感資料）
+ * @param {Array<{label, count}>} findings
+ */
+function renderPrivacySummary(findings) {
+  if (!findings || findings.length === 0) {
+    privacySummary.style.display = 'block';
+    privacySummary.innerHTML =
+      '<span class="privacy-summary-none">✅ 未偵測到敏感資料</span>';
+    return;
+  }
+
+  const chips = findings
+    .map(f => `<span class="privacy-chip">${escapeHtml(f.label.slice(1, -1))} ×${f.count}</span>`)
+    .join('');
+
+  privacySummary.style.display = 'block';
+  privacySummary.innerHTML =
+    `<span class="privacy-summary-label">已遮蔽：</span>${chips}`;
 }
 
 /**

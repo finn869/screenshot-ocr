@@ -124,10 +124,15 @@
         <div class="panel-section" id="ocr-section">
           <div class="panel-section-title">
             <button id="btn-ocr" class="btn-panel-translate" disabled title="点击执行 OCR 识别">🔍 OCR 识别</button>
-            <button id="btn-copy" class="btn-panel-action" disabled title="复制识别文字">📋 复制</button>
+            <div class="panel-title-actions">
+              <button id="btn-privacy-mask" class="btn-panel-action btn-privacy" disabled title="自動偵測並遮蔽敏感資料（IP、Email、電話、身分證、信用卡、API Key…）">🛡️ 隱私遮蔽</button>
+              <button id="btn-copy" class="btn-panel-action" disabled title="复制识别文字">📋 複製</button>
+            </div>
           </div>
+          <!-- 遮蔽摘要列（初始隱藏）-->
+          <div id="privacy-summary" style="display:none"></div>
           <div id="ocr-result">
-            <p class="placeholder-text">OCR 结果将显示在这里…</p>
+            <p class="placeholder-text">OCR 結果將顯示在這裡…</p>
           </div>
         </div>
 
@@ -157,6 +162,7 @@
     </main>
   </div>
 
+  <script src="privacy-mask.js"></script>
   <script src="index.js"></script>
 </body>
 </html>

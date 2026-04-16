@@ -45,6 +45,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('shortcut-changed', (event, key) => callback(key));
   },
 
+  /** 查询本地 OCR 服务地址 */
+  getOcrServerUrl: () => ipcRenderer.invoke('get-ocr-server-url'),
+
+  /** 监听 OCR 服务就绪通知 */
+  onOcrServerReady: (callback) => {
+    ipcRenderer.on('ocr-server-ready', (event, ready) => callback(ready));
+  },
+
   // ── Overlay 窗口用 ────────────────────────────────────────────
 
   /**

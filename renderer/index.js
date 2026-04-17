@@ -197,11 +197,119 @@ function buildAccelerator(e) {
   return parts.join('+');
 }
 
+// ─── 延遲截圖 ──────────────────────────────────────────────────
+
+// 延遲選擇器：預設 0（即時）
+let captureDelay = 0;
+let countdownCancelled = false;
+let countdownTimerId = null;
+
+// 延遲選項（Hover 下拉選單）點擊
+const delayBadge = document.getElementById('delay-badge');
+
+document.querySelectorAll('.delay-opt').forEach(btn => {
+  btn.addEventListener('click', () => {
+    captureDelay = Number(btn.dataset.delay);
+    // 更新 active 樣式
+    document.querySelectorAll('.delay-opt').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    // 更新按鈕上的秒數標記（即時時清空）
+    delayBadge.textContent = captureDelay > 0 ? ` ${captureDelay}s` : '';
+  });
+});
+
+// 倒數計時 DOM 元素
+const countdownOverlay = document.getElementById('countdown-overlay');
+const countdownNum     = document.getElementById('countdown-num');
+const countdownHint    = document.getElementById('countdown-hint');
+const countdownCancel  = document.getElementById('countdown-cancel');
+const countdownArc     = document.getElementById('countdown-arc');
+
+/**
+ * 啟動延遲截圖倒數
+ * @param {number} delaySec  1 | 2 | 3
+ */
+async function startDelayedCapture(delaySec) {
+  countdownCancelled = false;
+
+  // ── 計算 SVG 圓弧參數 ──────────────────────────────────────
+  const r          = 52;
+  const circumference = 2 * Math.PI * r;
+  countdownArc.style.strokeDasharray  = `${circumference}`;
+  countdownArc.style.strokeDashoffset = '0';   // 初始：完整圓弧
+
+  // ── 顯示覆蓋層 ────────────────────────────────────────────
+  countdownNum.textContent = delaySec;
+  countdownHint.textContent = '即將截圖…按 ESC 或「取消」中止';
+  countdownOverlay.style.display = 'flex';
+
+  // 取消按鈕（one-time，避免重複綁定）
+  const onCancel = () => cancelCountdown();
+  countdownCancel.addEventListener('click', onCancel, { once: true });
+
+  // ── 逐秒倒數 ──────────────────────────────────────────────
+  let remaining = delaySec;
+
+  await new Promise((resolve) => {
+    function tick() {
+      if (countdownCancelled) { resolve(); return; }
+
+      remaining--;
+
+      // 更新圓弧（剩餘比例）
+      const fraction = remaining / delaySec;
+      countdownArc.style.strokeDashoffset = `${circumference * (1 - fraction)}`;
+
+      if (remaining <= 0) {
+        resolve();
+        return;
+      }
+
+      // 更新數字 + 脈衝動畫
+      countdownNum.textContent = remaining;
+      countdownNum.classList.add('pulse');
+      setTimeout(() => countdownNum.classList.remove('pulse'), 180);
+
+      countdownTimerId = setTimeout(tick, 1000);
+    }
+
+    countdownTimerId = setTimeout(tick, 1000);
+  });
+
+  // 清理覆蓋層
+  countdownOverlay.style.display = 'none';
+  countdownCancel.removeEventListener('click', onCancel);
+
+  if (!countdownCancelled) {
+    window.api.startCapture();
+  }
+}
+
+/** 取消倒數（按鈕 或 ESC） */
+function cancelCountdown() {
+  countdownCancelled = true;
+  clearTimeout(countdownTimerId);
+  countdownOverlay.style.display = 'none';
+  setStatus('已取消延遲截圖');
+}
+
+// ESC 鍵在倒數中取消
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && countdownOverlay.style.display === 'flex') {
+    e.stopImmediatePropagation();
+    cancelCountdown();
+  }
+}, true);   // capture phase，確保先於其他 keydown 處理器
+
 // ─── 按钮事件 ──────────────────────────────────────────────────
 
-// 「截取屏幕」：通知主进程开始截图流程
+// 「截取屏幕」：即時截圖或延遲截圖
 btnCapture.addEventListener('click', () => {
-  window.api.startCapture();
+  if (captureDelay === 0) {
+    window.api.startCapture();
+  } else {
+    startDelayedCapture(captureDelay);
+  }
 });
 
 // 「全屏截图」：截取主显示器全屏

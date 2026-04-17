@@ -86,15 +86,6 @@ The installer will be generated in the `dist/` directory.
 
 ---
 
-## 路线图 Roadmap
-
-- [ ] Windows / Linux 正式支持 / Official Windows & Linux support
-- [ ] 截图历史记录 / Screenshot history
-- [ ] 自定义 OCR 语言包 / Custom OCR language packs
-- [ ] 云端同步 / Cloud sync
-
----
-
 ## 许可 License
 
 MIT

@@ -45,7 +45,7 @@ const state = {
   redoStack: [],              // 撤销后可重做的标注队列
   activeTextInput: null,      // 文字標注進行中的 overlay 資料 { el, x, y, fontSize }
   // ── 工具状态 ──
-  currentTool: 'rect',        // rect | pen | highlight | mosaic | line | ellipse | arrow | text
+  currentTool: 'rect',        // rect | pen | highlight | mosaic | line | ellipse | arrow | text | stamp
   penColor: '#ff4757',        // 当前颜色
   penSize: 4,                 // 当前笔刷大小
 };
@@ -320,7 +320,7 @@ window.api.onScreenshotResult((dataURL) => {
 
 canvas.addEventListener('mousedown', (e) => {
   if (!state.originalImage) return;
-  if (state.currentTool === 'text') return; // 文字工具由 click 事件處理
+  if (state.currentTool === 'text' || state.currentTool === 'stamp') return; // 由 click 事件處理
 
   state.isDrawing = true;
   state.drawStart = getCanvasPos(e);
@@ -470,6 +470,16 @@ canvas.addEventListener('mouseup', (e) => {
   updateHistoryBtns();
 });
 
+// 印章工具：滑鼠在 canvas 上移動時顯示半透明預覽印章
+canvas.addEventListener('mousemove', (e) => {
+  if (state.currentTool !== 'stamp' || !state.originalImage) return;
+  const pos = getCanvasPos(e);
+  redrawCanvas();
+  ctx.save();
+  drawStampShape(ctx, pos.x, pos.y, getNextStepNum(), state.penColor, state.penSize, 0.5);
+  ctx.restore();
+});
+
 canvas.addEventListener('mouseleave', () => {
   if (state.isDrawing) {
     state.isDrawing = false;
@@ -482,6 +492,8 @@ canvas.addEventListener('mouseleave', () => {
     }
     redrawCanvas();
     updateHistoryBtns();
+  } else if (state.currentTool === 'stamp') {
+    redrawCanvas(); // 清除印章懸停預覽
   }
 });
 
@@ -514,6 +526,7 @@ function loadScreenshot(dataURL) {
     canvas.dataset.scale = scale; // 供矩形坐标计算使用（此处未用，scale=1时一致）
 
     redrawCanvas();
+    updateStampBtn(); // 新截圖後印章計數歸 ①
 
     // 显示 canvas，隐藏空状态提示
     emptyState.style.display = 'none';
@@ -628,6 +641,10 @@ function drawAnnotation(ann) {
       break;
     }
 
+    case 'stamp':
+      drawStampShape(ctx, ann.x, ann.y, ann.num, ann.color, ann.size);
+      break;
+
     case 'mosaic':
       drawMosaic(ann.x, ann.y, ann.w, ann.h);
       break;
@@ -674,6 +691,71 @@ function drawArrowShape(ctx, x1, y1, x2, y2, color, lineWidth) {
   );
   ctx.closePath();
   ctx.fill();
+}
+
+// ─── 步驟印章輔助函式 ──────────────────────────────────────────
+
+/**
+ * 取得下一個印章編號（從現有標注中找最大值 +1）
+ * 撤銷後自動倒退，不需要額外計數器
+ */
+function getNextStepNum() {
+  let max = 0;
+  state.annotations.forEach(ann => {
+    if (ann.type === 'stamp') max = Math.max(max, ann.num);
+  });
+  return max + 1;
+}
+
+/**
+ * 把數字轉成帶圓圈 Unicode 字元（1–20 → ①–⑳，21+ → (n)）
+ * 用於工具按鈕顯示
+ */
+function getCircledNum(n) {
+  if (n >= 1 && n <= 20) return String.fromCharCode(0x2460 + n - 1);
+  return `(${n})`;
+}
+
+/**
+ * 同步印章工具按鈕文字，顯示「下一個編號」
+ */
+function updateStampBtn() {
+  const btn = document.querySelector('[data-tool="stamp"]');
+  if (!btn) return;
+  const next = getNextStepNum();
+  btn.textContent = getCircledNum(next);
+  btn.title = `步驟印章（下一個：${next}）`;
+}
+
+/**
+ * 繪製印章：填色圓形 + 白色數字（供 drawAnnotation 與預覽共用）
+ */
+function drawStampShape(ctx, x, y, num, color, penSize, alpha = 1) {
+  const radius   = Math.max(12, penSize * 4);
+  const fontSize = Math.round(radius * 1.1);
+
+  ctx.globalAlpha = alpha;
+  ctx.setLineDash([]);
+
+  // 填色圓形
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 細白描邊，增強與背景的對比
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+
+  // 圓心數字（白色，粗體，垂直+水平置中）
+  ctx.fillStyle    = '#fff';
+  ctx.font         = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(num), x, y);
+
+  ctx.globalAlpha = 1; // 還原
 }
 
 /**
@@ -906,11 +988,28 @@ document.querySelectorAll('.size-btn').forEach(btn => {
 
 // ─── 文字標注工具 ──────────────────────────────────────────────
 
-// canvas 點擊時（僅 text 工具）：在點擊位置建立浮動輸入框
+// canvas 點擊時（text / stamp 工具）：處理單次點擊放置
 canvas.addEventListener('click', (e) => {
-  if (state.currentTool !== 'text' || !state.originalImage) return;
+  if (!state.originalImage) return;
   const pos = getCanvasPos(e);
-  createTextInput(pos.x, pos.y);
+
+  if (state.currentTool === 'text') {
+    createTextInput(pos.x, pos.y);
+
+  } else if (state.currentTool === 'stamp') {
+    const num = getNextStepNum();
+    state.annotations.push({
+      type: 'stamp',
+      x: pos.x, y: pos.y,
+      num,
+      color: state.penColor,
+      size: state.penSize,
+    });
+    state.redoStack = [];
+    redrawCanvas();
+    updateHistoryBtns(); // 內含 updateStampBtn()
+    setStatus(`✅ 已放置步驟 ${num}`);
+  }
 });
 
 /**
@@ -1119,6 +1218,7 @@ function doRedo() {
 function updateHistoryBtns() {
   btnUndo.disabled = state.annotations.length === 0;
   btnRedo.disabled = state.redoStack.length === 0;
+  updateStampBtn(); // 同步印章按鈕顯示的下一個編號
 }
 
 /**

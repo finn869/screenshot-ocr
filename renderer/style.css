@@ -617,6 +617,34 @@ button:disabled {
   box-shadow: 0 0 0 1px var(--border);
 }
 
+/* 自訂顏色拾色器 label（外觀與 .color-btn 一致，顯示「＋」符號） */
+.color-picker-label {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: #1e1e38;
+  position: relative;
+  overflow: hidden;
+}
+
+.color-picker-label:hover {
+  filter: brightness(1.3);
+  transform: scale(1.15);
+}
+
+/* 隱藏原生 color input，但保持可點擊（label 觸發） */
+#color-picker {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* 笔刷大小按钮 */
 .size-btn {
   width: 30px;

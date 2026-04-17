@@ -70,23 +70,23 @@
 
           <!-- 工具按钮 -->
           <div class="palette-group">
-            <button class="tool-btn active" data-tool="rect"      title="矩形">▭</button>
-            <button class="tool-btn"        data-tool="ellipse"   title="橢圓">◯</button>
-            <button class="tool-btn"        data-tool="line"      title="直線">╱</button>
-            <button class="tool-btn"        data-tool="pen"       title="画笔">✏️</button>
-            <button class="tool-btn"        data-tool="highlight" title="荧光笔">🖊</button>
-            <button class="tool-btn"        data-tool="arrow"     title="箭頭">➜</button>
-            <button class="tool-btn"        data-tool="text"      title="文字">T</button>
-            <button class="tool-btn"        data-tool="stamp"     title="步驟印章（點擊放置編號）">①</button>
-            <button class="tool-btn"        data-tool="mosaic"    title="马赛克">⊞</button>
+            <button class="tool-btn active" data-tool="rect"      data-tooltip="矩形框">▭</button>
+            <button class="tool-btn"        data-tool="ellipse"   data-tooltip="橢圓 / 圓形">◯</button>
+            <button class="tool-btn"        data-tool="line"      data-tooltip="直線">╱</button>
+            <button class="tool-btn"        data-tool="pen"       data-tooltip="畫筆">✏️</button>
+            <button class="tool-btn"        data-tool="highlight" data-tooltip="螢光筆">🖊</button>
+            <button class="tool-btn"        data-tool="arrow"     data-tooltip="箭頭">➜</button>
+            <button class="tool-btn"        data-tool="text"      data-tooltip="文字標注">T</button>
+            <button class="tool-btn"        data-tool="stamp"     data-tooltip="步驟印章">①</button>
+            <button class="tool-btn"        data-tool="mosaic"    data-tooltip="馬賽克">⊞</button>
           </div>
 
           <div class="palette-sep"></div>
 
           <!-- 撤销 / 重做 -->
           <div class="palette-group">
-            <button id="btn-undo" class="tool-btn" disabled title="撤销上一步标注 (⌘Z)">⟲</button>
-            <button id="btn-redo" class="tool-btn" disabled title="取消撤销 (⌘⇧Z)">⟳</button>
+            <button id="btn-undo" class="tool-btn" disabled data-tooltip="撤銷  ⌘Z">⟲</button>
+            <button id="btn-redo" class="tool-btn" disabled data-tooltip="重做  ⌘⇧Z">⟳</button>
           </div>
 
           <div class="palette-sep"></div>

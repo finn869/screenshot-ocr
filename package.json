@@ -4,12 +4,64 @@
   "description": "桌面截图 + OCR 工具（Hackathon MVP）",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build:python": "python3 -m PyInstaller ocr_server.py --onefile --name ocr_server --distpath build-python --clean --noconfirm",
+    "build:mac": "npm run build:python && electron-builder --mac",
+    "build:win": "npm run build:python && electron-builder --win",
+    "build:linux": "npm run build:python && electron-builder --linux",
+    "build": "npm run build:mac"
+  },
+  "build": {
+    "appId": "com.katsumi.screenshot-ocr",
+    "productName": "截图OCR",
+    "copyright": "Copyright © 2024 Katsumi",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "capture/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "build-python/ocr_server",
+        "to": "ocr_server",
+        "filter": ["**/*"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.icns",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ]
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "linux": {
+      "icon": "assets/icon.png",
+      "target": ["AppImage"]
+    },
+    "dmg": {
+      "title": "截图OCR 安装",
+      "background": null
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false
+    }
   },
   "devDependencies": {
-    "electron": "^28.0.0"
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
   },
   "keywords": ["electron", "screenshot", "ocr"],
-  "author": "Hackathon Team",
+  "author": "Katsumi Team",
   "license": "MIT"
 }

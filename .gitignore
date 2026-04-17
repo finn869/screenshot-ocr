@@ -1,2 +1,7 @@
 node_modules/
+dist/
+build-python/
+*.spec
+__pycache__/
+*.pyc
 .DS_Store

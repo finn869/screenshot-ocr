@@ -15,6 +15,8 @@ const {
   globalShortcut,
   dialog,
   nativeImage,
+  Tray,
+  Menu,
 } = require('electron');
 const path = require('path');
 const fs   = require('fs');
@@ -102,11 +104,98 @@ ipcMain.handle('get-ocr-server-url', () => `http://127.0.0.1:${OCR_SERVER_PORT}`
 
 // ─── 全局变量 ──────────────────────────────────────────────────
 let mainWindow     = null;
+let tray           = null;   // 系统托盘图标
 let captureWindows = [];   // 每个显示器各一个 overlay 窗口
 let currentShortcut = 'F1';
 
 // 防止 capture-done / capture-cancel 被多个 overlay 重复触发
 let isCapturing = false;
+
+// ─── 创建系统托盘 ──────────────────────────────────────────────
+function createTray() {
+  // 尝试加载托盘图标，找不到就用空白图标兜底
+  let trayIcon;
+  const iconPath = path.join(__dirname, 'assets', 'tray-icon.png');
+  if (fs.existsSync(iconPath)) {
+    trayIcon = nativeImage.createFromPath(iconPath);
+  } else {
+    // 生成一个 16×16 的纯色占位图标（PNG 格式）
+    trayIcon = nativeImage.createEmpty();
+  }
+
+  // macOS 建议使用 Template image（黑白图标会自动适配深色/浅色模式）
+  if (process.platform === 'darwin') {
+    trayIcon = trayIcon.resize({ width: 16, height: 16 });
+    trayIcon.setTemplateImage(true);
+  }
+
+  tray = new Tray(trayIcon);
+  tray.setToolTip('截图 OCR 工具');
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '显示主窗口',
+      click: () => showMainWindow(),
+    },
+    {
+      label: `截图 (${currentShortcut})`,
+      click: () => triggerCapture(),
+    },
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: () => {
+        app.isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+
+  // 单击托盘图标显示/隐藏主窗口（Windows / Linux 常见交互）
+  tray.on('click', () => {
+    if (mainWindow && mainWindow.isVisible()) {
+      mainWindow.hide();
+    } else {
+      showMainWindow();
+    }
+  });
+}
+
+// 显示并聚焦主窗口（不存在则重建）
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createMainWindow();
+  } else {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
+// 更新托盘菜单中的快捷键显示
+function updateTrayMenu() {
+  if (!tray) return;
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '显示主窗口',
+      click: () => showMainWindow(),
+    },
+    {
+      label: `截图 (${currentShortcut})`,
+      click: () => triggerCapture(),
+    },
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: () => {
+        app.isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+  tray.setContextMenu(contextMenu);
+}
 
 // ─── 创建主窗口 ────────────────────────────────────────────────
 function createMainWindow() {
@@ -128,13 +217,28 @@ function createMainWindow() {
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   // mainWindow.webContents.openDevTools();
 
+  // ── 关闭时隐藏到托盘，而非退出 ──────────────────────────────
+  mainWindow.on('close', (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault();   // 阻止真正关闭
+      mainWindow.hide();         // 隐藏到托盘
+    }
+  });
+
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
 // ─── App 生命周期 ──────────────────────────────────────────────
 app.whenReady().then(async () => {
-  // 先启动 OCR 服务（后台非阻塞），再建立窗口
+  // macOS：阻止 Dock 显示（可选，像 Snipaste 一样纯托盘驻留）
+  // 如果你希望 Dock 中也保留图标，把下面这行注释掉
+  if (process.platform === 'darwin') {
+    app.dock.hide();
+  }
+
+  // 先启动 OCR 服务（后台非阻塞），再建立托盘和窗口
   startOcrServer();
+  createTray();        // 托盘先建，快捷键触发不依赖主窗口
 
   createMainWindow();
   registerShortcut(currentShortcut);     // 启动时注册快捷键
@@ -147,12 +251,15 @@ app.whenReady().then(async () => {
   });
 });
 
+// window-all-closed 不退出——让托盘保持存活
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // 什么都不做，保持后台运行
+  // 真正退出通过托盘菜单的「退出」项触发
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+  // macOS 点击 Dock 图标时恢复主窗口（若 Dock 可见）
+  if (BrowserWindow.getAllWindows().length === 0) showMainWindow();
 });
 
 // 退出前取消注册，避免系统级别的快捷键残留；同时关闭 OCR 服务
@@ -301,6 +408,7 @@ ipcMain.handle('change-shortcut', (event, newKey) => {
   if (ok) {
     currentShortcut = newKey;
     if (mainWindow) mainWindow.webContents.send('shortcut-changed', newKey);
+    updateTrayMenu();   // 同步更新托盘菜单显示
   }
   return { ok, current: currentShortcut };
 });

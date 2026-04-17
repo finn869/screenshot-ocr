@@ -43,8 +43,9 @@ const state = {
   translationText: '',        // 当前翻译结果
   privacyMaskOn: false,       // 隱私遮蔽是否啟用
   redoStack: [],              // 撤销后可重做的标注队列
+  activeTextInput: null,      // 文字標注進行中的 overlay 資料 { el, x, y, fontSize }
   // ── 工具状态 ──
-  currentTool: 'rect',        // rect | pen | highlight | mosaic
+  currentTool: 'rect',        // rect | pen | highlight | mosaic | line | ellipse | arrow | text
   penColor: '#ff4757',        // 当前颜色
   penSize: 4,                 // 当前笔刷大小
 };
@@ -319,6 +320,8 @@ window.api.onScreenshotResult((dataURL) => {
 
 canvas.addEventListener('mousedown', (e) => {
   if (!state.originalImage) return;
+  if (state.currentTool === 'text') return; // 文字工具由 click 事件處理
+
   state.isDrawing = true;
   state.drawStart = getCanvasPos(e);
 
@@ -370,6 +373,16 @@ canvas.addEventListener('mousemove', (e) => {
     ctx.beginPath();
     if (rx > 0 && ry > 0) ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.restore();
+
+  } else if (state.currentTool === 'arrow') {
+    // 箭頭：實時預覽完整箭頭（實線，更直觀）
+    redrawCanvas();
+    ctx.save();
+    drawArrowShape(ctx,
+      state.drawStart.x, state.drawStart.y,
+      pos.x, pos.y,
+      state.penColor, state.penSize);
     ctx.restore();
 
   } else {
@@ -428,6 +441,20 @@ canvas.addEventListener('mouseup', (e) => {
       state.redoStack = [];
     }
 
+  } else if (state.currentTool === 'arrow') {
+    // 箭頭：記錄起終點與筆刷大小
+    const dist = Math.hypot(pos.x - state.drawStart.x, pos.y - state.drawStart.y);
+    if (dist > 8) {
+      state.annotations.push({
+        type: 'arrow',
+        x1: state.drawStart.x, y1: state.drawStart.y,
+        x2: pos.x, y2: pos.y,
+        color: state.penColor,
+        size: state.penSize,
+      });
+      state.redoStack = [];
+    }
+
   } else {
     // 矩形 / 马赛克：统一为左上角 + 正数宽高
     const x = Math.min(state.drawStart.x, pos.x);
@@ -464,6 +491,7 @@ canvas.addEventListener('mouseleave', () => {
  * 加载截图：把 DataURL 渲染到 canvas，重置状态
  */
 function loadScreenshot(dataURL) {
+  removeTextInput();            // 清除進行中的文字輸入
   state.screenshotDataURL = dataURL;
   state.annotations = [];
   state.redoStack = [];
@@ -584,12 +612,68 @@ function drawAnnotation(ann) {
       ctx.stroke();
       break;
 
+    case 'arrow':
+      drawArrowShape(ctx, ann.x1, ann.y1, ann.x2, ann.y2, ann.color, ann.size);
+      break;
+
+    case 'text': {
+      const lineHeight = ann.fontSize * 1.4;
+      ctx.font = `bold ${ann.fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif`;
+      ctx.fillStyle = ann.color;
+      ctx.textBaseline = 'top';
+      ctx.setLineDash([]);
+      ann.content.split('\n').forEach((line, i) => {
+        ctx.fillText(line, ann.x, ann.y + i * lineHeight);
+      });
+      break;
+    }
+
     case 'mosaic':
       drawMosaic(ann.x, ann.y, ann.w, ann.h);
       break;
   }
 
   ctx.restore();
+}
+
+/**
+ * 箭頭繪製輔助函式（供 drawAnnotation 和 mousemove 預覽共用）
+ * 畫法：線段 + 填色箭頭三角形
+ */
+function drawArrowShape(ctx, x1, y1, x2, y2, color, lineWidth) {
+  const headLen   = Math.max(14, lineWidth * 5); // 箭頭長度隨筆刷縮放
+  const headAngle = Math.PI / 6;                 // 30°，合計 60° 開口
+  const angle     = Math.atan2(y2 - y1, x2 - x1);
+
+  ctx.strokeStyle = color;
+  ctx.fillStyle   = color;
+  ctx.lineWidth   = lineWidth;
+  ctx.lineCap     = 'round';
+  ctx.lineJoin    = 'round';
+  ctx.setLineDash([]);
+
+  // 線段：終點縮進 headLen*0.8，讓箭頭根部不溢出
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(
+    x2 - headLen * 0.8 * Math.cos(angle),
+    y2 - headLen * 0.8 * Math.sin(angle),
+  );
+  ctx.stroke();
+
+  // 箭頭三角形（填充）
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(
+    x2 - headLen * Math.cos(angle - headAngle),
+    y2 - headLen * Math.sin(angle - headAngle),
+  );
+  ctx.lineTo(
+    x2 - headLen * Math.cos(angle + headAngle),
+    y2 - headLen * Math.sin(angle + headAngle),
+  );
+  ctx.closePath();
+  ctx.fill();
 }
 
 /**
@@ -776,11 +860,16 @@ function setStatus(msg) {
 // 工具按钮：点击切换 currentTool，更新 active 样式
 document.querySelectorAll('.tool-btn').forEach(btn => {
   btn.addEventListener('click', () => {
+    // 切換工具前，提交進行中的文字輸入（有內容則儲存，無則取消）
+    if (state.activeTextInput) commitTextInput();
+
     state.currentTool = btn.dataset.tool;
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
+
     // 更新 canvas 光标
-    canvas.style.cursor = (state.currentTool === 'mosaic') ? 'cell' : 'crosshair';
+    const cursorMap = { mosaic: 'cell', text: 'text' };
+    canvas.style.cursor = cursorMap[state.currentTool] || 'crosshair';
   });
 });
 
@@ -814,6 +903,93 @@ document.querySelectorAll('.size-btn').forEach(btn => {
     btn.classList.add('active');
   });
 });
+
+// ─── 文字標注工具 ──────────────────────────────────────────────
+
+// canvas 點擊時（僅 text 工具）：在點擊位置建立浮動輸入框
+canvas.addEventListener('click', (e) => {
+  if (state.currentTool !== 'text' || !state.originalImage) return;
+  const pos = getCanvasPos(e);
+  createTextInput(pos.x, pos.y);
+});
+
+/**
+ * 在 canvas 座標 (canvasX, canvasY) 處建立浮動 <textarea>
+ * Enter 確認、Shift+Enter 換行、ESC 取消、blur 確認
+ */
+function createTextInput(canvasX, canvasY) {
+  // 若已有進行中的輸入框，先提交它
+  if (state.activeTextInput) commitTextInput();
+
+  const rect     = canvas.getBoundingClientRect();
+  const screenX  = rect.left + canvasX;
+  const screenY  = rect.top  + canvasY;
+  const fontSize = Math.max(12, state.penSize * 4); // 2→8→12 | 4→16 | 8→32
+
+  const ta = document.createElement('textarea');
+  ta.className = 'text-annotation-input';
+  ta.style.left     = `${screenX}px`;
+  ta.style.top      = `${screenY}px`;
+  ta.style.fontSize = `${fontSize}px`;
+  ta.style.color    = state.penColor;
+  ta.style.borderColor = state.penColor;
+  ta.rows = 1;
+  document.body.appendChild(ta);
+  ta.focus();
+
+  state.activeTextInput = { el: ta, x: canvasX, y: canvasY, fontSize };
+
+  // Enter 確認（Shift+Enter 換行）
+  ta.addEventListener('keydown', (ev) => {
+    ev.stopPropagation(); // 避免觸發全域 Cmd+Z 等快捷鍵
+    if (ev.key === 'Escape') {
+      removeTextInput();
+    } else if (ev.key === 'Enter' && !ev.shiftKey) {
+      ev.preventDefault();
+      commitTextInput();
+    }
+  });
+
+  // 自動高度（隨文字行數增長）
+  ta.addEventListener('input', () => {
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+  });
+
+  // blur 確認（點擊其他地方時自動提交）
+  ta.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (state.activeTextInput && state.activeTextInput.el === ta) {
+        commitTextInput();
+      }
+    }, 150);
+  });
+}
+
+/**
+ * 確認文字輸入：若有內容則儲存標注，之後移除 overlay
+ */
+function commitTextInput() {
+  if (!state.activeTextInput) return;
+  const { el, x, y, fontSize } = state.activeTextInput;
+  const content = el.value.trim();
+  removeTextInput(); // 先移除（設 state.activeTextInput = null），再 push
+  if (content) {
+    state.annotations.push({ type: 'text', x, y, content, color: state.penColor, fontSize });
+    state.redoStack = [];
+    redrawCanvas();
+    updateHistoryBtns();
+  }
+}
+
+/**
+ * 取消並移除文字輸入 overlay
+ */
+function removeTextInput() {
+  if (!state.activeTextInput) return;
+  state.activeTextInput.el.remove();
+  state.activeTextInput = null;
+}
 
 /**
  * HTML 特殊字符转义（防 XSS）

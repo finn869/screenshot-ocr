@@ -342,6 +342,36 @@ canvas.addEventListener('mousemove', (e) => {
     state.activeStroke.points.push(pos);
     redrawCanvas();
 
+  } else if (state.currentTool === 'line') {
+    // 直線：實時預覽虛線
+    redrawCanvas();
+    ctx.save();
+    ctx.strokeStyle = state.penColor;
+    ctx.lineWidth = state.penSize;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(state.drawStart.x, state.drawStart.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    ctx.restore();
+
+  } else if (state.currentTool === 'ellipse') {
+    // 橢圓：實時預覽虛線框
+    const cx = (state.drawStart.x + pos.x) / 2;
+    const cy = (state.drawStart.y + pos.y) / 2;
+    const rx = Math.abs(pos.x - state.drawStart.x) / 2;
+    const ry = Math.abs(pos.y - state.drawStart.y) / 2;
+    redrawCanvas();
+    ctx.save();
+    ctx.strokeStyle = state.penColor;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    if (rx > 0 && ry > 0) ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
   } else {
     // 矩形 / 马赛克：重绘 + 虚线预览框
     const w = pos.x - state.drawStart.x;
@@ -368,6 +398,35 @@ canvas.addEventListener('mouseup', (e) => {
       state.redoStack = [];   // 新标注后清空重做队列
     }
     state.activeStroke = null;
+
+  } else if (state.currentTool === 'line') {
+    // 直線：記錄起終點
+    const dist = Math.hypot(pos.x - state.drawStart.x, pos.y - state.drawStart.y);
+    if (dist > 5) {
+      state.annotations.push({
+        type: 'line',
+        x1: state.drawStart.x, y1: state.drawStart.y,
+        x2: pos.x, y2: pos.y,
+        color: state.penColor,
+        size: state.penSize,
+      });
+      state.redoStack = [];
+    }
+
+  } else if (state.currentTool === 'ellipse') {
+    // 橢圓：記錄中心點與半徑
+    const rx = Math.abs(pos.x - state.drawStart.x) / 2;
+    const ry = Math.abs(pos.y - state.drawStart.y) / 2;
+    if (rx > 3 && ry > 3) {
+      state.annotations.push({
+        type: 'ellipse',
+        cx: (state.drawStart.x + pos.x) / 2,
+        cy: (state.drawStart.y + pos.y) / 2,
+        rx, ry,
+        color: state.penColor,
+      });
+      state.redoStack = [];
+    }
 
   } else {
     // 矩形 / 马赛克：统一为左上角 + 正数宽高
@@ -502,6 +561,26 @@ function drawAnnotation(ann) {
       ctx.beginPath();
       ctx.moveTo(ann.points[0].x, ann.points[0].y);
       for (let i = 1; i < ann.points.length; i++) ctx.lineTo(ann.points[i].x, ann.points[i].y);
+      ctx.stroke();
+      break;
+
+    case 'line':
+      ctx.strokeStyle = ann.color;
+      ctx.lineWidth = ann.size;
+      ctx.lineCap = 'round';
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(ann.x1, ann.y1);
+      ctx.lineTo(ann.x2, ann.y2);
+      ctx.stroke();
+      break;
+
+    case 'ellipse':
+      ctx.strokeStyle = ann.color;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.ellipse(ann.cx, ann.cy, ann.rx, ann.ry, 0, 0, Math.PI * 2);
       ctx.stroke();
       break;
 
@@ -705,13 +784,26 @@ document.querySelectorAll('.tool-btn').forEach(btn => {
   });
 });
 
-// 颜色色块：点击切换 penColor，更新 active 样式
+// 颜色色块：点击切换 penColor，更新 active 样式，同步拾色器
 document.querySelectorAll('.color-btn').forEach(btn => {
   btn.addEventListener('click', () => {
+    if (!btn.dataset.color) return; // 跳過拾色器 label（由 input 事件處理）
     state.penColor = btn.dataset.color;
+    colorPickerInput.value = btn.dataset.color; // 同步拾色器顯示
     document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
   });
+});
+
+// 自訂顏色拾色器
+const colorPickerInput = document.getElementById('color-picker');
+const colorPickerLabel = document.getElementById('color-picker-label');
+
+colorPickerInput.addEventListener('input', (e) => {
+  state.penColor = e.target.value;
+  colorPickerLabel.style.background = e.target.value;
+  document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+  colorPickerLabel.classList.add('active');
 });
 
 // 大小按钮：点击切换 penSize，更新 active 样式

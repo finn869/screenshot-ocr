@@ -71,6 +71,8 @@
           <!-- 工具按钮 -->
           <div class="palette-group">
             <button class="tool-btn active" data-tool="rect"      title="矩形">▭</button>
+            <button class="tool-btn"        data-tool="ellipse"   title="橢圓">◯</button>
+            <button class="tool-btn"        data-tool="line"      title="直線">╱</button>
             <button class="tool-btn"        data-tool="pen"       title="画笔">✏️</button>
             <button class="tool-btn"        data-tool="highlight" title="荧光笔">🖊</button>
             <button class="tool-btn"        data-tool="mosaic"    title="马赛克">⊞</button>
@@ -94,6 +96,11 @@
             <button class="color-btn"        data-color="#2ed573" style="background:#2ed573" title="绿"></button>
             <button class="color-btn"        data-color="#1e90ff" style="background:#1e90ff" title="蓝"></button>
             <button class="color-btn"        data-color="#ffffff" style="background:#ffffff" title="白"></button>
+            <!-- 自訂顏色拾色器 -->
+            <label class="color-btn color-picker-label" id="color-picker-label" title="自訂顏色">
+              ＋
+              <input type="color" id="color-picker" value="#ff4757">
+            </label>
           </div>
 
           <div class="palette-sep"></div>

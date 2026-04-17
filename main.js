@@ -28,17 +28,32 @@ let ocrServerProcess = null;
 
 /**
  * 启动本地 EasyOCR Python 服务
- * 会自动寻找 python3 / python，并等待服务就绪（最多 60 秒）
+ *
+ * 打包后（app.isPackaged = true）：
+ *   使用 PyInstaller 生成的独立二进制，路径在 process.resourcesPath/ocr_server
+ *
+ * 开发时（npm start）：
+ *   使用系统 python3 直接运行 ocr_server.py
  */
 function startOcrServer() {
-  const serverScript = path.join(__dirname, 'ocr_server.py');
+  let cmd, args;
 
-  // 优先使用 python3，fallback 到 python
-  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+  if (app.isPackaged) {
+    // ── 打包后：使用内嵌的独立二进制 ────────────────────────────
+    const binaryName = process.platform === 'win32' ? 'ocr_server.exe' : 'ocr_server';
+    cmd  = path.join(process.resourcesPath, binaryName);
+    args = [];
+    console.log('[OCR] 使用内嵌二进制:', cmd);
+  } else {
+    // ── 开发模式：使用系统 Python ──────────────────────────────
+    cmd  = process.platform === 'win32' ? 'python' : 'python3';
+    args = [path.join(__dirname, 'ocr_server.py')];
+    console.log('[OCR] 开发模式，使用 python3 ocr_server.py');
+  }
 
   console.log('[OCR] 正在启动 EasyOCR 服务…');
 
-  ocrServerProcess = spawn(pythonCmd, [serverScript], {
+  ocrServerProcess = spawn(cmd, args, {
     env: { ...process.env, OCR_PORT: String(OCR_SERVER_PORT) },
     // detached: false 确保主进程退出时子进程也被终止
   });

@@ -50,6 +50,11 @@
         <button id="btn-clear-rect" class="btn-ghost" disabled>
           <span class="btn-icon">⬜</span> 清除标注
         </button>
+
+        <!-- 另存為 PNG / JPG -->
+        <button id="btn-save" class="btn-secondary" disabled>
+          <span class="btn-icon">💾</span> 另存為…
+        </button>
       </div>
 
       <!-- 右：状态提示 -->
@@ -125,6 +130,10 @@
           </div>
           <canvas id="main-canvas"></canvas>
         </div>
+
+        <!-- 截圖歷史縮圖列（有截圖後才顯示）-->
+        <div id="history-strip" style="display:none"></div>
+
       </section>
 
       <!-- 右侧：OCR + 翻译面板 -->

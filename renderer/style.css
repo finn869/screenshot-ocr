@@ -617,6 +617,34 @@ button:disabled {
   box-shadow: 0 0 0 1px var(--border);
 }
 
+/* ── 文字標注輸入框（動態插入 body，浮動在 canvas 上方） ── */
+.text-annotation-input {
+  position: fixed;
+  min-width: 100px;
+  min-height: 28px;
+  padding: 4px 8px;
+  background: rgba(10, 10, 20, 0.82);
+  border: 1.5px dashed;        /* 顏色由 JS 動態設定 */
+  border-radius: 4px;
+  resize: none;
+  outline: none;
+  z-index: 9999;
+  line-height: 1.4;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+  font-weight: bold;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
+  white-space: pre;
+  caret-color: #fff;
+}
+
+/* 文字工具按鈕：加粗字體使 "T" 更明顯 */
+.tool-btn[data-tool="text"] {
+  font-weight: 700;
+  font-size: 13px;
+  font-family: serif;
+}
+
 /* 自訂顏色拾色器 label（外觀與 .color-btn 一致，顯示「＋」符號） */
 .color-picker-label {
   cursor: pointer;

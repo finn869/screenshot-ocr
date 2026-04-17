@@ -874,6 +874,183 @@ button:disabled {
   vertical-align: baseline;
 }
 
+/* ── 延遲截圖 Hover 下拉選單 ─────────────────────────────── */
+
+/* 外層 wrapper：相對定位，讓選單能絕對定位在按鈕正下方 */
+#delay-wrap {
+  position: relative;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+/* 主按鈕：顯示目前選擇（從 .btn-secondary 繼承） */
+#btn-delay {
+  gap: 4px;
+}
+
+/* 目前已選秒數的小標記（即時時隱藏，有秒數時顯示） */
+#delay-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-left: 1px;
+  line-height: 1;
+}
+
+/* 下拉選單本體 */
+#delay-menu {
+  position: absolute;
+  top: 100%;          /* 緊貼按鈕底部，無空隙，保持 hover 連續 */
+  left: 0;
+  z-index: 9000;
+  min-width: 90px;
+
+  background: #1a1a2e;
+  border: 1px solid #3a3a60;
+  border-radius: 7px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  padding: 5px 0 3px; /* 上方 5px padding 製造視覺間距，但 hover 區域無斷層 */
+
+  /* 預設隱藏 */
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+
+/* wrapper hover 時（含按鈕 + 選單區域）展開選單 */
+#delay-wrap:hover #delay-menu {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+/* 各選項 */
+.delay-opt {
+  display: block;
+  width: 100%;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  white-space: nowrap;
+  gap: 0;
+}
+
+.delay-opt:hover {
+  background: #252548;
+  color: var(--text);
+}
+
+.delay-opt.active {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.delay-opt.active::before {
+  content: '✓  ';
+  font-size: 11px;
+}
+
+/* ── 倒數計時覆蓋層 ──────────────────────────────────────── */
+#countdown-overlay {
+  display: none;                /* 由 JS 切換為 flex */
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(8, 8, 18, 0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+/* 圓環容器 */
+#countdown-ring {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* SVG 圓環 */
+#countdown-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);  /* 從 12 點鐘方向開始 */
+}
+
+#countdown-track {
+  fill: none;
+  stroke: #1e1e38;
+  stroke-width: 8;
+}
+
+#countdown-arc {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 8;
+  stroke-linecap: round;
+  /* stroke-dasharray / stroke-dashoffset 由 JS 動態控制 */
+  transition: stroke-dashoffset 0.95s linear;
+}
+
+/* 中心大數字 */
+#countdown-num {
+  position: relative;
+  font-size: 64px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 30px rgba(0, 212, 255, 0.4);
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+/* 每次數字切換時觸發脈衝縮放 */
+#countdown-num.pulse {
+  transform: scale(1.25);
+  opacity: 0.6;
+}
+
+/* 提示文字 */
+#countdown-hint {
+  font-size: 14px;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+
+/* 取消按鈕 */
+#countdown-cancel {
+  padding: 8px 22px;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+#countdown-cancel:hover {
+  background: #1e1e38;
+  color: var(--text);
+  border-color: #3a3a60;
+}
+
 /* ── 自定义滚动条 ─────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;

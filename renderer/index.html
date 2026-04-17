@@ -32,6 +32,19 @@
           <span class="btn-icon">⬚</span> 截图
         </button>
 
+        <!-- 延遲截圖：滑過展開選單 -->
+        <div id="delay-wrap">
+          <button id="btn-delay" class="btn-secondary">
+            ⏱ 延遲<span id="delay-badge"></span>
+          </button>
+          <div id="delay-menu">
+            <button class="delay-opt active" data-delay="0">即時</button>
+            <button class="delay-opt" data-delay="1">1 秒</button>
+            <button class="delay-opt" data-delay="2">2 秒</button>
+            <button class="delay-opt" data-delay="3">3 秒</button>
+          </div>
+        </div>
+
         <!-- 全屏截图（主显示器）-->
         <button id="btn-fullscreen" class="btn-secondary">
           <span class="btn-icon">🖥</span> 全屏
@@ -179,6 +192,19 @@
       </section>
 
     </main>
+  </div>
+
+  <!-- 延遲截圖倒數計時覆蓋層（預設隱藏） -->
+  <div id="countdown-overlay">
+    <div id="countdown-ring">
+      <svg id="countdown-svg" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+        <circle id="countdown-track" cx="60" cy="60" r="52" />
+        <circle id="countdown-arc"   cx="60" cy="60" r="52" />
+      </svg>
+      <span id="countdown-num">3</span>
+    </div>
+    <p id="countdown-hint">即將截圖…</p>
+    <button id="countdown-cancel">取消 (ESC)</button>
   </div>
 
   <script src="privacy-mask.js"></script>

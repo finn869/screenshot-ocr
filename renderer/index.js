@@ -44,6 +44,7 @@ const state = {
   privacyMaskOn: false,       // 隱私遮蔽是否啟用
   redoStack: [],              // 撤销后可重做的标注队列
   activeTextInput: null,      // 文字標注進行中的 overlay 資料 { el, x, y, fontSize }
+  screenshotHistory: [],      // 截圖歷史 [{ dataURL, thumbDataURL }]，索引 0 最新，上限 10 張
   // ── 工具状态 ──
   currentTool: 'rect',        // rect | pen | highlight | mosaic | line | ellipse | arrow | text | stamp
   penColor: '#ff4757',        // 当前颜色
@@ -61,6 +62,7 @@ const btnOpenFile   = document.getElementById('btn-open-file');
 const fileInput   = document.getElementById('file-input');
 const btnOcr           = document.getElementById('btn-ocr');
 const btnClearRect     = document.getElementById('btn-clear-rect');
+const btnSave          = document.getElementById('btn-save');
 const btnUndo          = document.getElementById('btn-undo');
 const btnRedo          = document.getElementById('btn-redo');
 const btnCopy          = document.getElementById('btn-copy');
@@ -248,6 +250,9 @@ fileInput.addEventListener('change', () => {
   // 清空 input，允许重复选同一个档案
   fileInput.value = '';
 });
+
+// 「另存為…」：開啟存檔對話框
+btnSave.addEventListener('click', doSaveFile);
 
 // 「OCR 识别」：调用 OCR API
 btnOcr.addEventListener('click', runOCR);
@@ -501,8 +506,10 @@ canvas.addEventListener('mouseleave', () => {
 
 /**
  * 加载截图：把 DataURL 渲染到 canvas，重置状态
+ * @param {string} dataURL
+ * @param {{ addToHistory?: boolean }} opts  addToHistory=false 表示從歷史記錄重載，不再入列
  */
-function loadScreenshot(dataURL) {
+function loadScreenshot(dataURL, { addToHistory = true } = {}) {
   removeTextInput();            // 清除進行中的文字輸入
   state.screenshotDataURL = dataURL;
   state.annotations = [];
@@ -535,6 +542,14 @@ function loadScreenshot(dataURL) {
     // 启用相关按钮
     btnOcr.disabled = false;
     btnClearRect.disabled = false;
+    btnSave.disabled = false;
+
+    // 截圖歷史
+    if (addToHistory) {
+      addToHistoryRecord(dataURL); // 非同步，背景生成縮圖後更新 strip
+    } else {
+      renderHistoryStrip();        // 僅更新 active 指示器
+    }
 
     // 清空上次 OCR / 翻译结果
     ocrResult.innerHTML = '<p class="placeholder-text">截图完成，点击「OCR 识别」开始识别…</p>';
@@ -651,6 +666,113 @@ function drawAnnotation(ann) {
   }
 
   ctx.restore();
+}
+
+// ─── 另存為 PNG / JPG ──────────────────────────────────────────
+
+/**
+ * 呼叫主進程開啟存檔對話框，將含標注的 canvas 另存為 PNG 或 JPG
+ */
+async function doSaveFile() {
+  if (!state.originalImage) return;
+  const origText = btnSave.innerHTML;
+  btnSave.disabled = true;
+  btnSave.innerHTML = '<span class="btn-icon">💾</span> 儲存中…';
+
+  try {
+    const pngDataURL = canvas.toDataURL('image/png');
+    const result = await window.api.saveFile(pngDataURL);
+
+    if (result.ok) {
+      const filename = result.filePath.replace(/.*[/\\]/, '');
+      setStatus(`✅ 已儲存：${filename}`);
+    } else if (result.error) {
+      setStatus(`❌ 儲存失敗：${result.error}`);
+    }
+    // 使用者取消 (result.ok=false, no error) 則靜默處理
+  } catch (err) {
+    console.error('另存為失敗:', err);
+    setStatus('❌ 儲存失敗');
+  } finally {
+    btnSave.disabled = false;
+    btnSave.innerHTML = origText;
+  }
+}
+
+// ─── 截圖歷史 ──────────────────────────────────────────────────
+
+const HISTORY_MAX = 10;
+
+/**
+ * 非同步：生成縮圖後，把截圖推入歷史陣列並重繪縮圖列
+ */
+async function addToHistoryRecord(dataURL) {
+  // 跳過完全相同的連續截圖
+  if (state.screenshotHistory.length > 0 &&
+      state.screenshotHistory[0].dataURL === dataURL) {
+    renderHistoryStrip();
+    return;
+  }
+
+  const thumbDataURL = await generateThumbnail(dataURL);
+
+  state.screenshotHistory.unshift({ dataURL, thumbDataURL });
+  if (state.screenshotHistory.length > HISTORY_MAX) {
+    state.screenshotHistory.pop();
+  }
+
+  renderHistoryStrip();
+}
+
+/**
+ * 把截圖壓縮成小縮圖（120px 寬，JPEG 60%），減少記憶體佔用
+ */
+function generateThumbnail(dataURL) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const W   = 120;
+      const H   = Math.round(img.height * W / img.width);
+      const tmp = document.createElement('canvas');
+      tmp.width  = W;
+      tmp.height = H;
+      tmp.getContext('2d').drawImage(img, 0, 0, W, H);
+      resolve(tmp.toDataURL('image/jpeg', 0.6));
+    };
+    img.src = dataURL;
+  });
+}
+
+/**
+ * 重繪歷史縮圖列（show/hide、active 樣式同步）
+ */
+function renderHistoryStrip() {
+  const strip = document.getElementById('history-strip');
+  if (!strip) return;
+
+  if (state.screenshotHistory.length === 0) {
+    strip.style.display = 'none';
+    return;
+  }
+
+  strip.style.display = 'flex';
+
+  strip.innerHTML = state.screenshotHistory.map((item, i) => {
+    const isActive = item.dataURL === state.screenshotDataURL;
+    return `
+      <div class="history-item${isActive ? ' active' : ''}" data-idx="${i}" title="歷史截圖 ${i + 1}">
+        <img class="history-thumb" src="${item.thumbDataURL}" alt="">
+        <span class="history-num">${i + 1}</span>
+      </div>`;
+  }).join('');
+
+  // 點擊縮圖：重載截圖，不再推入歷史
+  strip.querySelectorAll('.history-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const item = state.screenshotHistory[Number(el.dataset.idx)];
+      if (item) loadScreenshot(item.dataURL, { addToHistory: false });
+    });
+  });
 }
 
 /**

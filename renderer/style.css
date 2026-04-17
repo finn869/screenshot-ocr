@@ -270,6 +270,70 @@ button:disabled {
   background: var(--bg-deep);
 }
 
+/* ── 截图历史缩略图条 ─────────────────────────────────────── */
+#history-strip {
+  display: flex;
+  flex-direction: row;
+  height: 68px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px 12px;
+  gap: 6px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+#history-strip::-webkit-scrollbar {
+  height: 4px;
+}
+#history-strip::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.history-item {
+  position: relative;
+  flex-shrink: 0;
+  width: 72px;
+  height: 48px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  background: var(--bg-deep);
+}
+
+.history-item:hover {
+  border-color: #3a3a60;
+}
+
+.history-item.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.history-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.history-num {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
 /* 空状态提示 */
 #empty-state {
   position: absolute;

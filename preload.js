@@ -45,6 +45,13 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('shortcut-changed', (event, key) => callback(key));
   },
 
+  /**
+   * 另存為 PNG / JPG
+   * @param {string} pngDataURL  canvas.toDataURL('image/png') 的結果
+   * @returns {{ ok: boolean, filePath?: string, error?: string }}
+   */
+  saveFile: (pngDataURL) => ipcRenderer.invoke('save-file', pngDataURL),
+
   /** 查询本地 OCR 服务地址 */
   getOcrServerUrl: () => ipcRenderer.invoke('get-ocr-server-url'),
 

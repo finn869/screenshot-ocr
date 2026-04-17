@@ -13,8 +13,11 @@ const {
   desktopCapturer,
   screen,
   globalShortcut,
+  dialog,
+  nativeImage,
 } = require('electron');
 const path = require('path');
+const fs   = require('fs');
 const { spawn } = require('child_process');
 
 // ─── EasyOCR Python 服务 ────────────────────────────────────────
@@ -327,6 +330,31 @@ ipcMain.handle('capture-fullscreen', async () => {
   if (!source) return null;
 
   return source.thumbnail.toDataURL();
+});
+
+// ─── 另存為 PNG / JPG ──────────────────────────────────────────
+ipcMain.handle('save-file', async (event, pngDataURL) => {
+  const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+    title: '另存為',
+    defaultPath: `screenshot-${Date.now()}`,
+    filters: [
+      { name: 'PNG 圖片', extensions: ['png'] },
+      { name: 'JPEG 圖片', extensions: ['jpg', 'jpeg'] },
+    ],
+  });
+
+  if (canceled || !filePath) return { ok: false };
+
+  try {
+    const ni  = nativeImage.createFromDataURL(pngDataURL);
+    const ext = path.extname(filePath).toLowerCase();
+    const buf = (ext === '.jpg' || ext === '.jpeg') ? ni.toJPEG(92) : ni.toPNG();
+    await fs.promises.writeFile(filePath, buf);
+    return { ok: true, filePath };
+  } catch (err) {
+    console.error('[SaveFile] 寫入失敗:', err);
+    return { ok: false, error: err.message };
+  }
 });
 
 // ─── 工具函数 ──────────────────────────────────────────────────

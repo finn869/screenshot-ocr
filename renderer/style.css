@@ -584,6 +584,9 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
+
+  /* 讓 ::after tooltip 能相對此元素定位 */
+  position: relative;
 }
 
 .tool-btn:hover {
@@ -595,6 +598,44 @@ button:disabled {
   background: #252548;
   border-color: var(--accent);
   color: var(--accent);
+}
+
+/* ── 工具按鈕 Tooltip ───────────────────────────────────────── */
+
+/* 預設隱藏 */
+.tool-btn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+
+  /* 外觀 */
+  background: #1e1e3a;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  padding: 4px 9px;
+  border-radius: 5px;
+  border: 1px solid #3a3a60;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+
+  /* 動畫與層疊 */
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition-delay: 0s;
+  z-index: 9998;
+}
+
+/* hover 時出現，稍微上浮 */
+.tool-btn[data-tooltip]:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  transition-delay: 0.25s; /* 短暫延遲，避免快速掃過時閃爍 */
 }
 
 /* 颜色色块按钮 */

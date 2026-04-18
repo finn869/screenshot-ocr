@@ -5,3 +5,6 @@ build-python/
 __pycache__/
 *.pyc
 .DS_Store
+.env
+.env.local
+*.env
